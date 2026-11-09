@@ -21,13 +21,18 @@
 #define MACCAM_COEUR_H
 
 #define CAM_TABLE 4096
+/* N/CUSTOM, de HC (9 novembre) : douze voisins et RAND, 13 bits d'index. */
+#define CAM_TABLE_MAX 8192
+#define CAM_VOISINS_MAX 12
 
 typedef struct {
     int w, h;                   /* la grille, sa bordure comprise */
     unsigned char *pix;         /* l'état : (h + 2) × w, comme l'original */
     unsigned char *neuf;        /* le second tampon, de même taille */
-    unsigned char lutA[CAM_TABLE];  /* bits 0x80 (plan 0) et 0x40 (plan 1) */
-    unsigned char lutB[CAM_TABLE];  /* bits 0x20 (plan 2) et 0x10 (plan 3) */
+    /* Les 4 096 premières cases servent aux voisinages de l'original ; les
+     * suivantes, aux règles N/CUSTOM de plus de onze voisins. */
+    unsigned char lutA[CAM_TABLE_MAX];  /* bits 0x80 (plan 0) et 0x40 (plan 1) */
+    unsigned char lutB[CAM_TABLE_MAX];  /* bits 0x20 (plan 2) et 0x10 (plan 3) */
     int major, minor, alternate, phaseA, phaseB;
     /* LE HASARD, l'ajout de HC décidé par l'utilisatrice le 7 novembre :
      * les voisinages 8 (Moore), 9 (von Neumann) et 10 (Margolus) mettent
@@ -49,6 +54,16 @@ typedef struct {
     unsigned long long tour;    /* les pas faits depuis l'ouverture */
     unsigned long long seuil;   /* RAND vaut 1 quand le tirage est sous ce seuil */
     unsigned long ppm;          /* la probabilité, en millionièmes */
+    /* LES VOISINS SUR MESURE, l'ajout de HC décidé par l'utilisatrice le 9
+     * novembre, repris de son MacCam de bureau : le voisinage 11 lit, pour
+     * chaque cellule, les cellules à (dx, dy) — dy > 0 vers le NORD —, sur
+     * le tore. Le bit i de l'index est le voisin i, le bit n est RAND.
+     * CAM-A lit ses plans 0 et 1 (plan 0 ou 1 du triplet), CAM-B, aux mêmes
+     * déplacements, ses plans 2 et 3. */
+    int           nvoisins;
+    signed char   vdx[CAM_VOISINS_MAX];
+    signed char   vdy[CAM_VOISINS_MAX];
+    unsigned char vplan[CAM_VOISINS_MAX];
 } Cam;
 
 /* Le voisinage que suit un pas : « major », ou l'un de ceux qu'imposent
@@ -57,12 +72,15 @@ enum { CAM_SELON_MAJOR = -1, CAM_MARGOLUS = 2, CAM_VONN = 1 };
 
 /* Les voisinages du hasard, à la suite des huit de l'original. */
 enum { CAM_MOORE_RAND = 8, CAM_VONN_RAND = 9, CAM_MARG_RAND = 10 };
+/* Le voisinage sur mesure, N/CUSTOM dans le FORTH. */
+enum { CAM_CUSTOM = 11 };
 
 int  cam_ouvre(Cam *c, int w, int h);   /* 0, ou -1 (mémoire, taille) */
 void cam_ferme(Cam *c);
 
 /* « set the pln7 of window "CAM" to … » : pln7 à pln4, un bit de lutA ou de
- * lutB ; les autres ne font rien, comme dans l'original. */
+ * lutB ; les autres ne font rien, comme dans l'original. Jusqu'à 8 192
+ * caractères : ceux d'une table N/CUSTOM. */
 void cam_pose_pln(Cam *c, int n, const char *texte);
 /* La table d'un plan, en 4 096 « 0 » ou « 1 » et un zéro final. */
 void cam_lit_pln(const Cam *c, int n, char *texte);
@@ -77,6 +95,12 @@ void cam_hasard(Cam *c, unsigned long ppm);
  * colonnes opposées, et ses cellules compteraient deux fois. Le compte ne
  * se fait que quand on le demande ; le pas n'en sait rien. */
 void cam_compte(const Cam *c, unsigned long n[4]);
+
+/* N/CUSTOM : les n voisins du voisinage 11, de 0 à 12 ; au-delà, les douze
+ * premiers. Sans voisin, un pas du voisinage 11 ne fait rien, comme un
+ * voisinage inconnu. */
+void cam_voisins(Cam *c, int n, const signed char *dx, const signed char *dy,
+                 const unsigned char *plan);
 
 /* Un pas : le balayage, puis les deux phases basculent. */
 void cam_pas(Cam *c, int voisinage);

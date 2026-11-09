@@ -160,3 +160,51 @@
       rend «  » ; envoie « COMPILE_ERR "Unknow'd word ", 4  »
    N/MOORE-RAND : R RAND 0 = >PLN0 ; MAKE-TABLE R
       rend «  » ; pln0 : 2048 uns, bit -1
+
+== 11. les voisins sur mesure, de HC : N/CUSTOM ==
+   N/CUSTOM 1 0 0 E -1 0 0 W END-CUSTOM : R E W XOR >PLN0 ; MAKE-TABLE R
+      major 11 ; 2 voisin(s) : (1,0,0) (-1,0,0)
+      pln0 : 01100110
+   N/CUSTOM 1 0 0 -1 0 0 END-CUSTOM : R NBR0 NBR1 + >PLN0 ; MAKE-TABLE R
+      major 11 ; 2 voisin(s) : (1,0,0) (-1,0,0)
+      pln0 : 01110111
+   N/CUSTOM 0 5 0 END-CUSTOM : R RAND >PLN0 NBR0 >PLN1 ; MAKE-TABLE R
+      major 11 ; 1 voisin(s) : (0,5,0)
+      pln0 : 0011
+      pln1 : 0101
+   N/CUSTOM 0 0 0 0 0 1 3 -2 0 END-CUSTOM : R CENTER >PLN0 CENTER' >PLN1 ; MAKE-TABLE R
+      major 11 ; 3 voisin(s) : (0,0,0) (0,0,1) (3,-2,0)
+      pln0 : 0101010101010101
+      pln1 : 0011001100110011
+   N/CUSTOM 5 0 0 CENTER 0 0 0 END-CUSTOM : R CENTER >PLN0 ; MAKE-TABLE R
+      major 11 ; 2 voisin(s) : (5,0,0) (0,0,0)
+      pln0 : 01010101
+   N/CUSTOM ( le voisin de l'est ) 1 0 0 (est) -1 0 0 ( et l'ouest ) END-CUSTOM : R NBR1 >PLN0 ; MAKE-TABLE R
+      major 11 ; 2 voisin(s) : (1,0,0) (-1,0,0)
+      pln0 : 00110011
+   N/CUSTOM 1 0 0 NBR1 -1 0 0 END-CUSTOM : R NBR1 >PLN0 ; MAKE-TABLE R
+      major 11 ; 2 voisin(s) : (1,0,0) (-1,0,0)
+      pln0 : 00110011
+   N/CUSTOM 1 0 2 200 0 0 0 128 0 0 X 1 0 -127 127 1 2 2 END-CUSTOM : R NBR0 >PLN0 ; MAKE-TABLE R
+      major 11 ; 2 voisin(s) : (0,1,0) (-127,127,1)
+      pln0 : 01010101
+   N/CUSTOM 0 1 0 END-CUSTOM : R NORTH >PLN0 ; MAKE-TABLE R
+      major 11 ; 1 voisin(s) : (0,1,0) ; envoie « COMPILE_ERR "Unknow'd word ", 8  »
+   N/MOORE : R RAND >PLN0 ; MAKE-TABLE R
+      major 0 ; 0 voisin(s) ; envoie « COMPILE_ERR "Unknow'd word ", 4  »
+   N/CUSTOM 1 0 0 2 0 0 3 0 0 4 0 0 5 0 0 6 0 0 7 0 0 8 0 0 9 0 0 10 0 0 11 0 0 12 0 0 13 0 0 END-CUSTOM : R NBR11 RAND AND >PLN0 ; MAKE-TABLE R
+      major 11 ; 12 voisin(s) : (1,0,0) (2,0,0) (3,0,0) (4,0,0) (5,0,0) (6,0,0) (7,0,0) (8,0,0) (9,0,0) (10,0,0) (11,0,0) (12,0,0)
+      pln0 : 8192 entrées, 2048 uns
+   N/CUSTOM END-CUSTOM : R 1 >PLN0 ; MAKE-TABLE R
+      major 11 ; 0 voisin(s)
+   N/CUSTOM 1 0 0 END-CUSTOM N/MOORE : R NORTH >PLN0 ; MAKE-TABLE R
+      major 0 ; 1 voisin(s) : (1,0,0)
+      pln0 : 4096 entrées, 2048 uns
+   N/CUSTOM 0 0 0 1 1 1 END-CUSTOM : A NBR0 >PLN0 ; : B NBR1 >PLN2 ; MAKE-TABLE A MAKE-TABLE B
+      major 11 ; 2 voisin(s) : (0,0,0) (1,1,1)
+      pln0 : 01010101
+      pln2 : 00110011
+   forth_voisins(« N/CUSTOM 1 0 0 END-CUSTOM N/CUSTOM 0 -3 1 4 4 0 END-CUSTOM ») : 2 : (0,-3,1) (4,4,0)
+   forth_voisins(« ( N/CUSTOM 9 9 0 END-CUSTOM ) N/MOORE ») : -1
+   forth_voisins(« N/CUSTOM END-CUSTOM ») : 0
+   forth_voisins(«  ») : -1

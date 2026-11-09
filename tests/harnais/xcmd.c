@@ -727,6 +727,46 @@ int main(int argc, char **argv)
     fais("put the count of window \"CAM\"");     /* le plan 0 plein */
     fais("send erasea to window \"CAM\"");
     fais("put the count of window \"CAM\"");
+    /* « custom », l'ajout de HC décidé par l'utilisatrice le 9 novembre :
+     * le texte FORTH de la carte, dont la fenêtre lit la dernière
+     * déclaration N/CUSTOM pour son voisinage 11. La machine est éprouvée
+     * par le harnais maccam ; ici, la propriété, et un pas. */
+    puts("   -- custom : les voisins sur mesure, l'ajout de HC");
+    fais("put the custom of window \"CAM\"");
+    fais("set the custom of window \"CAM\" to \"N/CUSTOM ( deux ) 2 0 0 E -2 0 0 W"
+         "\" & return & \"END-CUSTOM : R E W + >PLN0 ; MAKE-TABLE R\"");
+    fais("put the custom of window \"CAM\"");
+    fais("set the custom of window \"CAM\" to \"N/CUSTOM 1 0 0 END-CUSTOM "
+         "N/CUSTOM 0 -3 1 4 4 0 END-CUSTOM\"");                  /* la dernière */
+    fais("put the custom of window \"CAM\"");
+    fais("set the custom of window \"CAM\" to \"N/MOORE : R NORTH >PLN0 ;\"");
+    fais("put the custom of window \"CAM\"");                    /* vide */
+    hc_set_script(st, "on charge f\n  global pln0\n  put FORTH(f) into p\n"
+                      "  set the pln7 of window \"CAM\" to pln0\n"
+                      "  set the major of window \"CAM\" to 11\n"
+                      "  set the custom of window \"CAM\" to f\nend charge");
+    fais("charge \"N/CUSTOM 2 0 0 -2 0 0 END-CUSTOM : R NBR0 NBR1 + >PLN0 ; "
+         "MAKE-TABLE R\"");
+    {
+        /* la grille entière : une image plus petite laisserait voir, par le
+         * second tampon de la machine, un état d'avant (cam_image) */
+        static const char *const POINT[] = {
+            "............", "............", "............", ".....#......",
+            "............", "............", "............", "............",
+            "............", "............", "............", "............", NULL
+        };
+        g_dessin = POINT;
+        fais("set the image7 of window \"CAM\" to \"0,0,12,12\"");
+        g_dessin = NULL;
+    }
+    fais("put the count of window \"CAM\"");
+    fais("send step to window \"CAM\"");
+    fais("put the count of window \"CAM\"");     /* un point, deux voisins : 2 */
+    fais("put the custom of window \"CAM\"");
+    fais("set the custom of window \"CAM\" to empty");
+    fais("send step to window \"CAM\"");         /* sans voisin : rien */
+    fais("put the count of window \"CAM\"");
+    fais("send erasea to window \"CAM\"");
     fais("send toscrap to window \"CAM\"");
     fais("set the PictResource of window \"CAM\" to \"x\"");
     fais("send zorglub to window \"CAM\"");           /* passé : rien */

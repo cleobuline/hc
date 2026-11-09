@@ -20,6 +20,14 @@
 #define FORTH_BITS   12
 #define FORTH_PLANS  4
 
+/* LES VOISINS SUR MESURE, N/CUSTOM, l'ajout de HC décidé par l'utilisatrice
+ * le 9 novembre, repris de son MacCam de bureau (cleobuline/maccam-6,
+ * cam_forth.c) : jusqu'à douze voisins déclarés par leurs déplacements, plus
+ * RAND, soit treize bits et une table de 8 192 cases au plus — deux fois
+ * celles de l'original, pour ces règles-là seulement. */
+#define FORTH_CUSTOM_MAX 12
+#define FORTH_TABLE_MAX  8192
+
 /* Les voisinages, et le numéro que les scripts de la pile donnent à chacun
  * (« set the major of window "CAM" to … », dans leur gestionnaire load). */
 enum {
@@ -38,8 +46,29 @@ enum {
     FORTH_MOORE_RAND = 8,
     FORTH_VONN_RAND  = 9,
     FORTH_MARG_RAND  = 10,
-    FORTH_VOISINAGES = 11
+    /* LES VOISINS SUR MESURE, de HC aussi (9 novembre) : voir plus haut. */
+    FORTH_CUSTOM     = 11,
+    FORTH_VOISINAGES = 12
 };
+
+/* UNE DÉCLARATION N/CUSTOM, dans la syntaxe du MacCam de bureau :
+ *
+ *     N/CUSTOM  dx dy plan [NOM]  dx dy plan [NOM] …  END-CUSTOM
+ *
+ * dx > 0 vers l'est, dy > 0 vers le NORD (le haut de l'écran) — la boussole
+ * du livre de Toffoli et Margolus, celle du bureau ; plan 0 ou 1, les plans
+ * propres de la demi-machine : CAM-A lit les plans 0 et 1, CAM-B, aux mêmes
+ * déplacements, les plans 2 et 3. Le bit i de l'index est le voisin i, dans
+ * l'ordre de la déclaration ; le bit n, juste après le dernier, est RAND.
+ * Comme au bureau, ce qui ne se comprend pas est ignoré : un triplet
+ * incomplet, un plan autre que 0 ou 1, un déplacement au-delà de ±127, un
+ * treizième voisin. */
+typedef struct {
+    int           n;                    /* les voisins retenus, 0 à 12 */
+    signed char   dx[FORTH_CUSTOM_MAX];
+    signed char   dy[FORTH_CUSTOM_MAX];
+    unsigned char plan[FORTH_CUSTOM_MAX];
+} ForthVoisins;
 
 /* Les mots qui lisent le voisinage d'une cellule. */
 enum {
@@ -64,9 +93,10 @@ const char *forth_nom_voisin(int v);
 typedef struct {
     /* « 0 » et « 1 » ; un zéro final, et un zéro là où rien n'a été écrit :
      * le texte s'arrête à la première entrée qu'aucun >PLNk n'a remplie. */
-    char plans[FORTH_PLANS][FORTH_TABLE + 1];
+    char plans[FORTH_PLANS][FORTH_TABLE_MAX + 1];
     int  ecrits;        /* bit k : un >PLNk a écrit dans le plan k */
     int  voisinage;     /* FORTH_MOORE… */
+    ForthVoisins voisins;   /* la dernière déclaration N/CUSTOM, n = 0 sinon */
     int  bips;          /* les BEEP : l'original appelait SysBeep */
     char faute[160];    /* la ligne qu'il envoyait à la carte, ou "" */
     char rendu[3000];   /* ce que FORTH() rend : la pile, sommet en tête */
@@ -76,5 +106,11 @@ typedef struct {
  * dit dans la forme de l'original — une ligne de HyperTalk, faite pour être
  * envoyée à la carte. `rendu` porte la pile dans les deux cas. */
 int forth_compile(const char *source, ForthSortie *s);
+
+/* Les voisins de la DERNIÈRE déclaration N/CUSTOM du texte, lus comme le
+ * compilateur les lit — mêmes mots, mêmes commentaires —, sans rien
+ * exécuter : c'est ce que MACCAM demande au texte FORTH de la carte. Rend le
+ * nombre de voisins retenus, ou -1 si le texte n'en déclare pas. */
+int forth_voisins(const char *source, ForthVoisins *v);
 
 #endif

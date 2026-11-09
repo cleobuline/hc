@@ -98,7 +98,8 @@ void cam_ferme(Cam *c)
 
 /* « pln » : « 0 » éteint le bit, tout autre caractère l'allume ; la lecture
  * s'arrête au zéro de fin. L'original ne comptait pas : un texte plus long
- * que la table débordait. On s'arrête à 4 096. */
+ * que la table débordait. On s'arrête à 8 192, la table d'une règle N/CUSTOM
+ * à douze voisins ; celles de l'original en ont 4 096. */
 void cam_pose_pln(Cam *c, int n, const char *texte)
 {
     u8 *t;
@@ -110,7 +111,7 @@ void cam_pose_pln(Cam *c, int n, const char *texte)
     case 4: t = c->lutB; masque = 0x10; break;
     default: return;
     }
-    for (int i = 0; i < CAM_TABLE && texte && texte[i]; i++) {
+    for (int i = 0; i < CAM_TABLE_MAX && texte && texte[i]; i++) {
         if (texte[i] == '0') t[i] &= (u8)~masque;
         else t[i] |= masque;
     }
@@ -305,6 +306,55 @@ static void balaye_margolus(Cam *c, int hasard)
     }
 }
 
+/* ---- les voisins sur mesure : N/CUSTOM ---- */
+
+void cam_voisins(Cam *c, int n, const signed char *dx, const signed char *dy,
+                 const unsigned char *plan)
+{
+    if (n < 0) n = 0;
+    if (n > CAM_VOISINS_MAX) n = CAM_VOISINS_MAX;
+    for (int i = 0; i < n; i++) {
+        c->vdx[i] = dx[i];
+        c->vdy[i] = dy[i];
+        c->vplan[i] = plan[i] ? 1 : 0;
+    }
+    c->nvoisins = n;
+}
+
+/* Le voisinage 11 : chaque cellule lit ses n voisins sur le TORE, aux
+ * déplacements déclarés — par le reste de la division, pas par la bordure,
+ * qui n'a qu'une case de large quand un déplacement va jusqu'à 127 —, puis
+ * RAND. Le cam_step_custom du bureau, deux demi-machines au lieu d'une. */
+static void balaye_sur_mesure(Cam *c)
+{
+    const int w = c->w, H = c->h - 2, L = c->w - 2, n = c->nvoisins;
+    const u8 *s = c->pix;
+    u8 *d = c->neuf;
+    int ddx[CAM_VOISINS_MAX];
+    for (int i = 0; i < n; i++) ddx[i] = ((c->vdx[i] % L) + L) % L;
+    for (int r = 1; r <= c->h - 2; r++) {
+        const u8 *ligne[CAM_VOISINS_MAX];
+        for (int i = 0; i < n; i++) {
+            int y = (((r - 1 - c->vdy[i]) % H) + H) % H;     /* dy > 0 : au nord */
+            ligne[i] = s + (size_t)(y + 1) * (size_t)w + 1;
+        }
+        for (int x = 0; x < L; x++) {
+            unsigned a = 0, b = 0;
+            for (int i = 0; i < n; i++) {
+                int cx = x + ddx[i];
+                if (cx >= L) cx -= L;
+                u8 p = ligne[i][cx];
+                a |= (unsigned)((p >> (7 - c->vplan[i])) & 1) << i;
+                b |= (unsigned)((p >> (5 - c->vplan[i])) & 1) << i;
+            }
+            unsigned hasard = rand_bit(c, (unsigned)r - 1, (unsigned)x);
+            a |= hasard << n;
+            b |= hasard << n;
+            d[(size_t)r * (size_t)w + (size_t)x + 1] = (u8)(c->lutA[a] + c->lutB[b]);
+        }
+    }
+}
+
 /* ---- le pas ---- */
 
 void cam_pas(Cam *c, int voisinage)
@@ -321,6 +371,10 @@ void cam_pas(Cam *c, int voisinage)
     case CAM_MOORE_RAND: balaye_moore(c, MODE_RAND); break;     /* de HC */
     case CAM_VONN_RAND:  balaye_vonn(c, MODE_RAND); break;
     case CAM_MARG_RAND:  balaye_margolus(c, 1); break;
+    case CAM_CUSTOM:                                  /* de HC aussi */
+        if (c->nvoisins <= 0) return;
+        balaye_sur_mesure(c);
+        break;
     default: return;                                  /* l'original ne fait rien */
     }
     bords(c->neuf, c->w, c->h);
