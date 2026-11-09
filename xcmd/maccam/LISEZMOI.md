@@ -77,8 +77,12 @@ garde, et retrouvé dans le moteur de MACCAM — trois sources d'accord.
 | `N/MOORE-RAND` | 8 | **de HC** : Moore, avec RAND à la place de &CENTER' |
 | `N/VONN-RAND` | 9 | **de HC** : von Neumann, avec RAND à la place de &CENTER' |
 | `N/MARG-RAND` | 10 | **de HC** : Margolus, PHASE puis RAND à la place de PHASE' |
+| `N/CUSTOM` | 11 | **de HC** : les voisins que le texte déclare, NBR0 à NBR11, puis RAND |
 
-Les trois derniers sont l'ajout du 7 novembre, le hasard (voir plus bas).
+`N/MOORE-RAND`, `N/VONN-RAND` et `N/MARG-RAND` sont l'ajout du 7 novembre, le
+hasard ; `N/CUSTOM`, celui du 9 novembre, les voisins sur mesure (voir plus
+bas). Une table N/CUSTOM n'a pas 4 096 entrées mais 2^(n+1), n voisins et
+RAND : 8 pour un voisin, 8 192 pour douze.
 
 Les fichiers :
 
@@ -145,6 +149,7 @@ messages.
 | `colors` | **l'ajout de HC** : la couleur de chaque combinaison de plans, une ligne `"pppp r,g,b"` par motif — `"1000 255,0,0"` le plan 0 seul en rouge, `x` pour l'un ou l'autre |
 | `rand` | **l'ajout de HC** : la probabilité que RAND vaille 1, en pour cent, au millionième près — `50` à l'ouverture, `0.1` une cellule sur mille |
 | `count` | **l'ajout de HC** : les cellules allumées de chaque plan, séparées par des virgules — `"1834,52,0,0"` ; elle se lit, et la poser ne change rien |
+| `custom` | **l'ajout de HC** : se pose avec le texte FORTH de la carte, dont la fenêtre lit la dernière déclaration N/CUSTOM ; se relit en `"dx dy plan"` séparés par des virgules — `"3 0 0,-3 0 0"` |
 
 Ce qui diffère de l'original, décidé par l'utilisatrice : les palettes clut
 de la pile ne sont pas reprises, et `PictResource`, qui écrivait une
@@ -279,6 +284,59 @@ Ce qu'il faut savoir :
 - **Il ne coûte rien entre deux questions** : le compte se fait quand on le
   lit, en un passage sur la grille ; le pas n'en sait rien.
 - Une fenêtre dont la grille n'est pas encore faite compte `0,0,0,0`.
+
+## Les voisins sur mesure : N/CUSTOM
+
+Ajouté le 9 novembre, à la demande de l'utilisatrice, et repris de son MacCam
+de bureau : une règle n'est plus limitée aux voisines immédiates. Elle
+déclare elle-même jusqu'à **douze voisins**, chacun à un déplacement
+quelconque, et la table les lit dans cet ordre.
+
+```
+N/CUSTOM
+   3  0 0 LOIN-EST       ( trois cases à l'est, plan 0 )
+  -3  0 0 LOIN-OUEST
+   0  0 1                ( la cellule elle-même, plan 1 : CENTER' )
+END-CUSTOM
+: ECHO  LOIN-EST LOIN-OUEST XOR >PLN0 ;
+MAKE-TABLE ECHO
+```
+
+Ce qu'il faut savoir :
+
+- **Un voisin, trois nombres** : `dx dy plan`. `dx` positif vers l'**est**,
+  `dy` positif vers le **nord** — la boussole du bureau. `plan` vaut 0 ou 1 :
+  les deux plans de la demi-machine. Les déplacements vont jusqu'à ±127 et
+  font le tour du tore.
+- **Un nom, si l'on veut**, juste après le triplet. Sinon, ou en plus, le
+  voisin i s'appelle `NBRi` : `NBR0`, `NBR1`… Le bit i de l'index est le
+  voisin i ; le bit qui suit le dernier voisin est **`RAND`**, comme dans les
+  voisinages du hasard, réglé par `rand`.
+- **`CENTER` et `CENTER'`** se lisent quand `0 0 0` et `0 0 1` sont déclarés.
+  Les autres noms de l'original — `NORTH`, `EAST`… — n'existent pas ici,
+  comme `RAND` n'existe pas en N/MOORE.
+- **Les deux demi-machines** lisent aux mêmes déplacements : une table
+  écrite par `>PLN2` ou `>PLN3` lit le plan 2 pour `plan 0`, le plan 3 pour
+  `plan 1`.
+- **Ce qui ne se comprend pas est ignoré**, comme au bureau : un plan qui
+  n'est ni 0 ni 1, un déplacement au-delà de 127, un mot au milieu d'un
+  triplet, un triplet inachevé, un treizième voisin, un nom de la forme
+  `NBRn`. Les commentaires `( … )` sont permis entre les triplets.
+- Sans voisin, un pas ne fait rien.
+
+Le gestionnaire `load` de la pile pose `major` d'après le texte FORTH ; pour
+N/CUSTOM, il pose aussi la liste des voisins, que la fenêtre lit dans le même
+texte. Les lignes vont **après** celles du hasard :
+
+```
+if it contains "N/CUSTOM" then
+  set the major of window "CAM" to 11
+  set the custom of window "CAM" to it
+end if
+```
+
+`the custom of window "CAM"` relit les voisins retenus, ce qui permet de voir
+qu'aucun n'a été ignoré.
 
 ## L'essayer
 

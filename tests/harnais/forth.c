@@ -96,6 +96,39 @@ static void disposition(const char *decl)
     printf("\n");
 }
 
+/* N/CUSTOM : le voisinage, les voisins retenus, et chaque table écrite —
+ * en entier quand elle est courte, sinon sa longueur et ses uns. */
+static void sur_mesure(const char *src)
+{
+    int r = forth_compile(src, &s);
+    printf("   %s\n", src);
+    printf("      major %d ; %d voisin(s)", s.voisinage, s.voisins.n);
+    for (int i = 0; i < s.voisins.n; i++)
+        printf(" %s(%d,%d,%d)", i ? "" : ": ", s.voisins.dx[i], s.voisins.dy[i],
+               s.voisins.plan[i]);
+    if (r) printf(" ; envoie « %s »", s.faute);
+    printf("\n");
+    for (int k = 0; k < FORTH_PLANS; k++)
+        if (s.ecrits & (1 << k)) {
+            size_t l = strlen(s.plans[k]);
+            int n = 0;
+            for (size_t i = 0; i < l; i++) n += s.plans[k][i] == '1';
+            if (l <= 32) printf("      pln%d : %s\n", k, s.plans[k]);
+            else printf("      pln%d : %zu entrées, %d uns\n", k, l, n);
+        }
+}
+
+/* forth_voisins : ce que la fenêtre lit du même texte, sans l'exécuter. */
+static void voisins_lus(const char *src)
+{
+    ForthVoisins v;
+    int n = forth_voisins(src, &v);
+    printf("   forth_voisins(« %s ») : %d", src, n);
+    for (int i = 0; i < v.n; i++)
+        printf(" %s(%d,%d,%d)", i ? "" : ": ", v.dx[i], v.dy[i], v.plan[i]);
+    printf("\n");
+}
+
 int main(void)
 {
     puts("== 1. la disposition des bits, LUE dans le FORTH d'origine ==");
@@ -212,5 +245,50 @@ int main(void)
     disposition("N/MARG-RAND");
     compile("N/MOORE : R RAND >PLN0 ; MAKE-TABLE R");
     compile("N/MOORE-RAND : R RAND 0 = >PLN0 ; MAKE-TABLE R");
+
+    /* L'AJOUT DE HC du 9 novembre, décidé par l'utilisatrice et repris de
+     * son MacCam de bureau (cam_forth.c, lu) : N/CUSTOM, jusqu'à douze
+     * voisins à des déplacements quelconques, « dx dy plan [NOM] ». Le bit
+     * i de l'index est le voisin i — NBRi, ou le nom donné —, le bit n est
+     * RAND : une table de 2^(n+1) entrées. Les noms des voisinages de
+     * l'original n'y sont pas compris. Ce qui est mal formé est ignoré,
+     * comme au bureau. */
+    puts("\n== 11. les voisins sur mesure, de HC : N/CUSTOM ==");
+    sur_mesure("N/CUSTOM 1 0 0 E -1 0 0 W END-CUSTOM : R E W XOR >PLN0 ; MAKE-TABLE R");
+    sur_mesure("N/CUSTOM 1 0 0 -1 0 0 END-CUSTOM : R NBR0 NBR1 + >PLN0 ; MAKE-TABLE R");
+    sur_mesure("N/CUSTOM 0 5 0 END-CUSTOM : R RAND >PLN0 NBR0 >PLN1 ; MAKE-TABLE R");
+    /* (0,0,0) et (0,0,1) câblent aussi CENTER et CENTER' ; un voisin
+     * baptisé CENTER l'emporte */
+    sur_mesure("N/CUSTOM 0 0 0 0 0 1 3 -2 0 END-CUSTOM "
+               ": R CENTER >PLN0 CENTER' >PLN1 ; MAKE-TABLE R");
+    sur_mesure("N/CUSTOM 5 0 0 CENTER 0 0 0 END-CUSTOM : R CENTER >PLN0 ; MAKE-TABLE R");
+    /* les commentaires, « (est) » d'un seul mot compris ; un nom NBRn est
+     * refusé, le voisin garde le sien */
+    sur_mesure("N/CUSTOM ( le voisin de l'est ) 1 0 0 (est) -1 0 0 ( et l'ouest ) "
+               "END-CUSTOM : R NBR1 >PLN0 ; MAKE-TABLE R");
+    sur_mesure("N/CUSTOM 1 0 0 NBR1 -1 0 0 END-CUSTOM : R NBR1 >PLN0 ; MAKE-TABLE R");
+    /* ignorés : le plan 2, un déplacement au-delà de 127, un mot au milieu
+     * d'un triplet, un triplet incomplet à la fin */
+    sur_mesure("N/CUSTOM 1 0 2 200 0 0 0 128 0 0 X 1 0 -127 127 1 2 2 END-CUSTOM "
+               ": R NBR0 >PLN0 ; MAKE-TABLE R");
+    /* les noms de l'original ne sont pas compris ici, RAND ne l'est pas là */
+    sur_mesure("N/CUSTOM 0 1 0 END-CUSTOM : R NORTH >PLN0 ; MAKE-TABLE R");
+    sur_mesure("N/MOORE : R RAND >PLN0 ; MAKE-TABLE R");
+    /* douze voisins : 8 192 entrées ; le treizième est ignoré */
+    sur_mesure("N/CUSTOM 1 0 0 2 0 0 3 0 0 4 0 0 5 0 0 6 0 0 7 0 0 8 0 0 "
+               "9 0 0 10 0 0 11 0 0 12 0 0 13 0 0 END-CUSTOM "
+               ": R NBR11 RAND AND >PLN0 ; MAKE-TABLE R");
+    /* sans voisin, pas de table ; puis une déclaration de l'original rend
+     * ses noms */
+    sur_mesure("N/CUSTOM END-CUSTOM : R 1 >PLN0 ; MAKE-TABLE R");
+    sur_mesure("N/CUSTOM 1 0 0 END-CUSTOM N/MOORE : R NORTH >PLN0 ; MAKE-TABLE R");
+    /* deux demi-machines : >PLN2 à la même déclaration, ses plans 2 et 3 */
+    sur_mesure("N/CUSTOM 0 0 0 1 1 1 END-CUSTOM "
+               ": A NBR0 >PLN0 ; : B NBR1 >PLN2 ; MAKE-TABLE A MAKE-TABLE B");
+    /* ce que lit la fenêtre : la DERNIÈRE déclaration, -1 sans aucune */
+    voisins_lus("N/CUSTOM 1 0 0 END-CUSTOM N/CUSTOM 0 -3 1 4 4 0 END-CUSTOM");
+    voisins_lus("( N/CUSTOM 9 9 0 END-CUSTOM ) N/MOORE");
+    voisins_lus("N/CUSTOM END-CUSTOM");
+    voisins_lus("");
     return 0;
 }

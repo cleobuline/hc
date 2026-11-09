@@ -1561,4 +1561,112 @@ MESURÉ dans le conteneur :
     « item » ; 100 au plan 0 après fill8 (le tore de 10 × 10 du harnais),
     0 après erasea.
 
-NON MESURÉ : DANS HC (l'application), sur le Mac de l'utilisatrice.
+VU DANS HC (l'application), sur le Mac de l'utilisatrice, les 8 et 9
+novembre — ses relevés, rapportés par elle : le compteur sert à toutes les
+cartes de mesure de sa pile. π par une pluie sur un disque : 3,138455 en
+256 × 256 (le disque tracé : 3,138136), 3,141344 puis 3,141113 en 512 × 512
+(le disque : 3,141361) ; le parking de Rényi bloqué à 36,4 % (Rényi :
+36,41 %) ; e = 2,71486 par les trottoirs de Flory ; le nombre d'or,
+1,61685.
+
+NON MESURÉ : le compte cellule par cellule, DANS HC, contre une autre façon
+de compter.
+
+
+LES VOISINS SUR MESURE : N/CUSTOM — 9 novembre
+----------------------------------------------
+
+DEMANDÉ par l'utilisatrice (« pour les cases lointaines on peut faire comme
+dans maccam desktop »), après une règle de taches de Turing qui avait
+échoué : l'inhibiteur doit porter plus loin que l'activateur, et les
+voisinages de 1990 ne voient qu'à une case. Ses trois choix : douze voisins,
+comme son MacCam de bureau ; la liste lue dans le texte FORTH ; les mêmes
+déplacements pour les plans 2 et 3.
+
+REPRIS DE SON BUREAU, LU dans cleobuline/maccam-6 (cam-8/cam_forth.c, la
+lecture de N/CUSTOM ; cam_core.c, le pas) — lu, pas exécuté :
+  · « N/CUSTOM dx dy plan [NOM] … END-CUSTOM », douze voisins au plus ;
+    dx > 0 vers l'est, dy > 0 vers le nord ; plan 0 ou 1 ;
+  · le voisin i est NBRi, ou le nom donné ; le bit i de l'index est le
+    voisin i, le bit n est RAND : une table de 2^(n+1) entrées, 8 192 au
+    plus ;
+  · (0,0,0) et (0,0,1) câblent aussi CENTER et CENTER' ; un nom donné les
+    masque ;
+  · ignorés, comme au bureau qui l'écrivait sur sa console : un plan qui
+    n'est ni 0 ni 1, un déplacement au-delà de ±127, un mot au milieu d'un
+    triplet (le triplet continue après lui), un triplet inachevé, un
+    treizième voisin ; un nom NBRn est refusé ;
+  · un commentaire, entre les triplets, s'ouvre sur un mot qui commence par
+    « ( » et se ferme sur le premier qui finit par « ) ». HC le ferme aussi
+    sur un mot qui commence par « ) », sa règle pour le reste du texte.
+
+CE QUI EST FAIT :
+  · forth_coeur.c : N/CUSTOM, major 11. Les douze noms du voisinage
+    précédent sont retirés (NORTH n'est pas compris en N/CUSTOM, comme RAND
+    ne l'est pas en N/MOORE) ; NBR0…, les noms donnés, RAND, CENTER et
+    CENTER' deviennent des constantes que MAKE-TABLE remplit à chaque
+    entrée. forth_voisins() lit la dernière déclaration d'un texte sans
+    l'exécuter, par la même lecture que le compilateur ;
+  · maccam_coeur.c : le voisinage 11. Chaque cellule lit ses voisins sur le
+    TORE par le reste de la division — la bordure n'a qu'une case de large
+    — ; CAM-A lit les plans 0 et 1, CAM-B, aux mêmes déplacements, les plans
+    2 et 3 ; RAND est le même tirage que celui des voisinages 8 à 10. Les
+    tables passent de 4 096 à 8 192 cases ; « pln » lit jusqu'à 8 192
+    caractères ;
+  · maccam.c : « custom », une propriété de la fenêtre. Posée avec le texte
+    FORTH de la carte, elle en lit la dernière déclaration ; lue, elle rend
+    « dx dy plan » séparés par des virgules. Sans déclaration, la liste se
+    vide, et un pas du voisinage 11 ne fait rien. Le module MACCAM emporte
+    donc le lecteur du FORTH (xcmd/Makefile) ;
+  · le dictionnaire de départ grandit d'une déclaration, et sa borne
+    d'autant : la faute de mémoire tombe au 185e mot de l'utilisatrice,
+    avant comme après (mesuré dans le conteneur, l'ancien et le nouveau
+    FORTH).
+
+RIEN NE CHANGE pour une pile de 1990 ni pour une pile des 7 et 8 novembre :
+les témoins forth, maccam et xcmd n'ont bougé qu'aux sections ajoutées et à
+la taille des deux modules ; les autres modules, refaits avec le même clang,
+sont identiques à l'octet à ceux du dépôt.
+
+MESURÉ dans le conteneur, la machine et le FORTH compilés en natif :
+  · harnais forth, section 11 : les tables courtes en entier — l'est XOR
+    l'ouest « 01100110 » —, RAND au bit qui suit le dernier voisin, CENTER
+    et CENTER' câblés, un nom donné qui les masque, les commentaires, tout
+    ce qui est ignoré, NORTH inconnu en N/CUSTOM, douze voisins et 8 192
+    entrées, pas de table sans voisin, forth_voisins et sa dernière
+    déclaration ;
+  · harnais maccam, section 14 : un point file de trois cases vers l'est
+    quand son voisin est à trois cases à l'ouest, de deux lignes vers le sud
+    quand il est à deux au nord, tore compris ; (127, -100) sur un tore de
+    10 × 6 agit comme (-3, 2) ; CAM-B lit ses plans aux mêmes déplacements ;
+    RAND à 25 % après trois voisins : 1 025 cellules sur 4 096 ; la règle de
+    Conway refaite à douze voisins nommés, et le planeur revient à sa place
+    après un tour du tore ;
+  · harnais xcmd, section 12 : « custom » posé, relu, la dernière de deux
+    déclarations, vidé ; un pas : un point, deux voisins à ±2, deux points.
+
+NON MESURÉ : DANS HC (l'application), sur le Mac de l'utilisatrice ; et
+contre son MacCam de bureau, dont le code est lu, pas exécuté ici.
+
+
+UN ÉCART TROUVÉ EN PASSANT, LE 9 NOVEMBRE, NON TRANCHÉ : « image7 » et le
+second tampon
+--------------------------------------------------------------------------
+
+Le harnais xcmd de N/CUSTOM posait un point par « set the image7 of window
+"CAM" to "0,0,5,5" » sur une grille de 12 × 12, après des pas : QUATRE
+cellules se sont allumées. LA CAUSE, lue dans cam_image (maccam_coeur.c) :
+l'image passe par le second tampon de la machine, dont seul le rectangle
+donné est réécrit ; le reste garde la grille telle que le dernier pas l'a
+laissée — erasea n'efface que la grille, pas ce tampon —, et tout le tampon
+est ensuite posé sur le plan. Une image plus petite que la grille, posée
+après des pas, rallume donc hors de son rectangle les cellules du dernier
+pas, même effacées depuis — sur le plan de l'image, quel que soit le plan
+où elles vivaient.
+
+CE QUE FAISAIT L'ORIGINAL N'EST PAS MESURÉ : son code (plus haut) copie la
+peinture de la carte par CopyBits, et ce paragraphe ne dit pas s'il
+effaçait d'abord la destination. À jouer DANS HYPERCARD (Basilisk II) pour
+trancher : quelques pas, puis un image7 d'un rectangle plus petit que la
+fenêtre. Rien n'est corrigé ; le harnais de N/CUSTOM pose une image de la
+grille entière.

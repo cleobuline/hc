@@ -25,6 +25,8 @@ static void charge(Cam *c, const char *regle)
     for (int k = 0; k < 4; k++)
         if (f.ecrits & (1 << k)) cam_pose_pln(c, 7 - k, f.plans[k]);
     c->major = f.voisinage;
+    /* « set the custom of window "CAM" to » le même texte */
+    cam_voisins(c, f.voisins.n, f.voisins.dx, f.voisins.dy, f.voisins.plan);
 }
 
 /* L'intérieur de la grille, un caractère par cellule : le plan `bit`. */
@@ -279,5 +281,96 @@ int main(void)
     cam_ferme(&c);
     cam_compte(&c, nb);
     printf("   une fenêtre fermée : %lu,%lu,%lu,%lu\n", nb[0], nb[1], nb[2], nb[3]);
+
+    /* LES VOISINS SUR MESURE, l'ajout de HC décidé par l'utilisatrice le 9
+     * novembre : le voisinage 11 lit les cellules aux déplacements
+     * déclarés par N/CUSTOM, sur le tore — dx > 0 à l'est, dy > 0 au nord,
+     * comme son MacCam de bureau. */
+    puts("\n== 14. les voisins sur mesure : N/CUSTOM ==");
+    cam_ouvre(&c, 12, 8);                           /* un tore de 10 × 6 */
+    charge(&c, "N/CUSTOM -3 0 0 END-CUSTOM : R NBR0 >PLN0 ; MAKE-TABLE R");
+    printf("   major %d, %d voisin(s)\n", c.major, c.nvoisins);
+    allume(&c, 2, 2, 7);
+    allume(&c, 4, 9, 7);
+    montre(&c, 7, "au départ");
+    cam_pas(&c, CAM_SELON_MAJOR);
+    montre(&c, 7, "NBR0 à (-3, 0), l'ouest à trois cases : tout file de trois vers l'est,"
+                  " le tore compris");
+    charge(&c, "N/CUSTOM 0 2 0 END-CUSTOM : R NBR0 >PLN0 ; MAKE-TABLE R");
+    cam_pas(&c, CAM_SELON_MAJOR);
+    montre(&c, 7, "NBR0 à (0, 2), le nord à deux cases : deux lignes vers le sud");
+    charge(&c, "N/CUSTOM 0 -1 0 END-CUSTOM : R NBR0 >PLN0 ; MAKE-TABLE R");
+    for (int i = 0; i < 4; i++) cam_pas(&c, CAM_SELON_MAJOR);
+    montre(&c, 7, "NBR0 à (0, -1), quatre pas : quatre lignes vers le nord");
+    cam_ferme(&c);
+
+    /* Un déplacement plus long que le tore : le reste de la division. */
+    cam_ouvre(&c, 12, 8);
+    charge(&c, "N/CUSTOM 127 -100 0 END-CUSTOM : R NBR0 >PLN0 ; MAKE-TABLE R");
+    allume(&c, 3, 5, 7);
+    cam_pas(&c, CAM_SELON_MAJOR);
+    montre(&c, 7, "NBR0 à (127, -100) sur 10 × 6 : comme (7, -4), soit (-3, 2)");
+    cam_ferme(&c);
+
+    /* Les deux demi-machines, aux mêmes déplacements : CAM-B lit ses plans
+     * 2 et 3, et le plan d'un triplet est le second des siens. */
+    cam_ouvre(&c, 12, 8);
+    charge(&c, "N/CUSTOM 1 0 0 -1 0 1 END-CUSTOM "
+               ": A NBR0 >PLN0 ; : B NBR1 >PLN2 ; MAKE-TABLE A MAKE-TABLE B");
+    allume(&c, 3, 5, 7);                            /* plan 0 */
+    allume(&c, 3, 5, 4);                            /* plan 3 */
+    allume(&c, 3, 5, 6);                            /* plan 1 : nul n'y lit */
+    cam_pas(&c, CAM_SELON_MAJOR);
+    montre(&c, 7, "plan 0 : NBR0 à l'est, la cellule va vers l'ouest");
+    montre(&c, 5, "plan 2 : NBR1, le plan 3 à l'ouest, va vers l'est");
+    printf("   plan 1 : %d, plan 3 : %d — aucune table ne les écrit\n",
+           vivantes(&c, 6), vivantes(&c, 4));
+    cam_ferme(&c);
+
+    /* RAND, au bit qui suit le dernier voisin */
+    cam_ouvre(&c, 66, 66);
+    charge(&c, "N/CUSTOM 0 0 0 5 5 0 0 9 1 END-CUSTOM : R RAND >PLN0 ; MAKE-TABLE R");
+    cam_hasard(&c, 250000);
+    cam_pas(&c, CAM_SELON_MAJOR);
+    printf("   RAND après trois voisins, p = 25 %% : %d cellules sur 4096\n",
+           vivantes(&c, 7));
+    cam_ferme(&c);
+
+    /* Douze voisins, une table de 8 192 entrées : la règle de Conway, à
+     * des voisins nommés, refaite par N/CUSTOM, et le planeur revient. */
+    cam_ouvre(&c, 12, 12);
+    charge(&c, "N/CUSTOM 0 0 0 C 0 1 0 N 1 0 0 E 0 -1 0 S -1 0 0 W "
+               "-1 1 0 NW 1 1 0 NE -1 -1 0 SW 1 -1 0 SE 0 0 1 0 0 1 9 9 0 "
+               "END-CUSTOM 0 CONSTANT DEATH 1 CONSTANT BORN : UNCHANGED C ; "
+               ": LIFE N E S W NW NE SW SE + + + + + + + "
+               "{ DEATH DEATH UNCHANGED BORN DEATH DEATH DEATH DEATH DEATH } >PLN0 ; "
+               "MAKE-TABLE LIFE");
+    printf("   %d voisins, la table de pln0 : %zu entrées\n", c.nvoisins, strlen(f.plans[0]));
+    allume(&c, 1, 2, 7); allume(&c, 2, 3, 7);
+    allume(&c, 3, 1, 7); allume(&c, 3, 2, 7); allume(&c, 3, 3, 7);
+    depart = empreinte(&c);
+    for (int i = 0; i < 40; i++) cam_pas(&c, CAM_SELON_MAJOR);
+    printf("   après quarante pas, un tour du tore : %d cellules, %s\n",
+           vivantes(&c, 7), empreinte(&c) == depart ? "revenu à sa place" : "AILLEURS");
+    cam_ferme(&c);
+
+    /* Sans voisin, un pas du voisinage 11 ne fait rien ; au-delà de douze,
+     * les douze premiers. */
+    cam_ouvre(&c, 8, 8);
+    charge(&c, "N/CUSTOM END-CUSTOM");
+    allume(&c, 3, 3, 7);
+    depart = empreinte(&c);
+    cam_pas(&c, CAM_SELON_MAJOR);
+    printf("   sans voisin : major %d, %s\n", c.major,
+           empreinte(&c) == depart ? "rien ne change" : "LA GRILLE A CHANGÉ");
+    {
+        signed char dx[13] = { 0 }, dy[13] = { 0 };
+        unsigned char pl[13] = { 0 };
+        cam_voisins(&c, 13, dx, dy, pl);
+        printf("   treize voisins donnés : %d retenus\n", c.nvoisins);
+        cam_voisins(&c, -1, dx, dy, pl);
+        printf("   -1 voisin : %d retenu\n", c.nvoisins);
+    }
+    cam_ferme(&c);
     return 0;
 }

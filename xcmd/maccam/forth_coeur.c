@@ -81,6 +81,9 @@ signed char forth_disposition[FORTH_VOISINAGES][FORTH_BITS] = {
     [FORTH_MARG_RAND] = {
         V_CCWP, V_CCW, V_OPPP, V_OPP, V_CWP, V_CW,
         V_CENTERP, V_CENTER, V_ACENTERP, V_ACENTER, V_PHASE, V_RAND },
+    /* N/CUSTOM (9 novembre) : aucune disposition fixe. Ses bits portent les
+     * voisins que le texte déclare ; voir declare_sur_mesure(). */
+    [FORTH_CUSTOM] = { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 },
 };
 
 static const char *const NOMS_VOISINS[V_NOMBRE] = {
@@ -140,6 +143,7 @@ static const char *const INTERNES[M_INTERNES] = {
     "N/MOORE", "N/VONN", "N/MARG-PH", "N/MARG-HV",
     "N/MOORE-PH", "N/MOORE-HV", "N/VONN-PH", "N/VONN-HV",
     "N/MOORE-RAND", "N/VONN-RAND", "N/MARG-RAND",
+    "N/CUSTOM",
 };
 
 /* ---- les tailles de l'original ---- */
@@ -162,9 +166,10 @@ enum {
     ZONE_ORIGINE = 0xc6,
     CONSTANTES   = 100,
     VARIABLES    = 99,
-    /* Les trois déclarations du hasard (N/MOORE-RAND…) entrent au
-     * dictionnaire de départ : il grandit d'autant, pour que les mots de
-     * l'utilisatrice gardent exactement la place qu'ils avaient. */
+    /* Les déclarations de HC — les trois du hasard (N/MOORE-RAND…) et
+     * N/CUSTOM — entrent au dictionnaire de départ : il grandit d'autant,
+     * pour que les mots de l'utilisatrice gardent exactement la place
+     * qu'ils avaient. */
     DICTIONNAIRE = 200 + (FORTH_VOISINAGES - FORTH_MOORE_RAND)
 };
 
@@ -231,6 +236,11 @@ typedef struct {
 
     int         voisinage;
     int         entree;      /* l'entrée de MAKE-TABLE ; >PLNk y écrit */
+    /* N/CUSTOM : la déclaration en cours, et pour chaque constante le bit
+     * de l'index qu'elle lit (-1 : aucun) — NBR0…, RAND, les noms donnés,
+     * CENTER et CENTER' quand (0,0,0) et (0,0,1) sont déclarés. */
+    ForthVoisins voisins;
+    signed char  bit_de[CONSTANTES];
     int         pile_hors;   /* MAKE-TABLE a trouvé la pile hors de ses bornes */
 
     ForthSortie *s;
@@ -378,14 +388,125 @@ static short *case_zone(Vm *m, int adresse)
 
 static int adresse_variable(int n) { return -2 * (n + 1); }
 
+static void ajoute_constante(Vm *m, const char *nom, short v);
+static void declare_sur_mesure(Vm *m);
+
 /* N/MOORE… : les noms de ses douze bits deviennent les douze premières
  * constantes. N/MOORE est posé au départ. */
 static void declare(Vm *m, int v)
 {
+    if (v == FORTH_CUSTOM) { declare_sur_mesure(m); return; }
     m->voisinage = v;
     for (int b = 0; b < FORTH_BITS; b++)
         m->constantes[b] = forth_nom_voisin(forth_disposition[v][b]);
     if (m->nconstantes < FORTH_BITS) m->nconstantes = FORTH_BITS;
+    memset(m->bit_de, -1, sizeof m->bit_de);
+}
+
+/* ---- les voisins sur mesure : N/CUSTOM ---- */
+
+/* Un nombre entier, signé ou non, et rien d'autre : la lecture du bureau
+ * (strtol jusqu'au bout du mot), sans les 16 bits de nombre(). */
+static int entier(const char *t, long *v)
+{
+    const char *p = t + (*t == '-' || *t == '+');
+    if (!*p) return 0;
+    for (const char *q = p; *q; q++)
+        if (*q < '0' || *q > '9') return 0;
+    if (strlen(p) > 6) { *v = 1000000; return 1; }   /* bien au-delà de ±127 */
+    *v = strtol(t, NULL, 10);
+    return 1;
+}
+
+/* « NBR » suivi de chiffres : ces noms indexent les voisins, et le bureau
+ * refuse d'en baptiser un autre ainsi. */
+static int nom_reserve(const char *t)
+{
+    if (strncmp(t, "NBR", 3) || !t[3]) return 0;
+    for (const char *q = t + 3; *q; q++)
+        if (*q < '0' || *q > '9') return 0;
+    return 1;
+}
+
+/* LE CORPS D'UNE DÉCLARATION, jusqu'à END-CUSTOM : des triplets « dx dy
+ * plan », chacun suivi, s'il le veut, d'un nom. Comme au bureau, un
+ * commentaire s'ouvre sur un mot qui commence par « ( » et se ferme sur le
+ * premier qui finit par « ) » — « (est) » d'un seul mot compris —, ou qui
+ * commence par « ) », la règle du reste du texte. Ce qui ne se comprend pas
+ * est ignoré, comme au bureau, qui l'écrivait sur sa console. */
+static void lis_declaration(Vm *m, ForthVoisins *v, const char *noms[FORTH_CUSTOM_MAX])
+{
+    long triplet[3];
+    int t = 0, nom_possible = 0;
+    memset(v, 0, sizeof *v);
+    for (int i = 0; i < FORTH_CUSTOM_MAX; i++) noms[i] = NULL;
+    for (const char *mot = lis(m); mot && strcmp(mot, "END-CUSTOM"); mot = lis(m)) {
+        if (mot[0] == '(') {
+            while (mot && mot[0] != ')' && mot[strlen(mot) - 1] != ')') mot = lis(m);
+            if (!mot) break;
+            continue;
+        }
+        long n;
+        if (entier(mot, &n)) {
+            nom_possible = 0;
+            triplet[t++] = n;
+            if (t < 3) continue;
+            t = 0;
+            if (v->n >= FORTH_CUSTOM_MAX) continue;                 /* un treizième */
+            if (triplet[0] < -127 || triplet[0] > 127 ||
+                triplet[1] < -127 || triplet[1] > 127) continue;
+            if (triplet[2] != 0 && triplet[2] != 1) continue;
+            v->dx[v->n] = (signed char)triplet[0];
+            v->dy[v->n] = (signed char)triplet[1];
+            v->plan[v->n] = (unsigned char)triplet[2];
+            v->n++;
+            nom_possible = 1;
+        } else if (nom_possible && t == 0) {
+            if (!nom_reserve(mot)) noms[v->n - 1] = mot;
+            nom_possible = 0;
+        }
+    }
+}
+
+/* Lie un nom au bit b de l'index : une constante, créée s'il le faut, que
+ * MAKE-TABLE remplit à chaque entrée. `force` : un nom déjà lié dans cette
+ * déclaration l'est de nouveau ; sinon il garde son premier sens — un voisin
+ * baptisé « CENTER » l'emporte sur le CENTER de (0,0,0), comme au bureau, où
+ * le nom donné masque le mot câblé. */
+static void lie(Vm *m, const char *nom, int b, int force)
+{
+    int c = cherche(m->constantes, m->nconstantes, nom);
+    if (c < 0) {
+        ajoute_constante(m, nom, 0);
+        if (m->faute) return;
+        c = m->nconstantes - 1;
+    }
+    if (force || m->bit_de[c] < 0) m->bit_de[c] = (signed char)b;
+}
+
+/* N/CUSTOM : lit la déclaration, puis les noms. Les douze constantes du
+ * voisinage précédent perdent leur nom — NORTH, en N/CUSTOM, n'est pas
+ * compris, comme RAND ne l'est pas en N/MOORE. */
+static void declare_sur_mesure(Vm *m)
+{
+    static const char *const NBR[FORTH_CUSTOM_MAX] = {
+        "NBR0", "NBR1", "NBR2", "NBR3", "NBR4", "NBR5",
+        "NBR6", "NBR7", "NBR8", "NBR9", "NBR10", "NBR11",
+    };
+    const char *noms[FORTH_CUSTOM_MAX];
+    lis_declaration(m, &m->voisins, noms);
+    m->voisinage = FORTH_CUSTOM;
+    for (int b = 0; b < FORTH_BITS; b++) m->constantes[b] = NULL;
+    if (m->nconstantes < FORTH_BITS) m->nconstantes = FORTH_BITS;
+    memset(m->bit_de, -1, sizeof m->bit_de);
+    const ForthVoisins *v = &m->voisins;
+    for (int i = 0; i < v->n && !m->faute; i++)
+        if (noms[i]) lie(m, noms[i], i, 1);
+    for (int i = 0; i < v->n && !m->faute; i++) lie(m, NBR[i], i, 1);
+    lie(m, "RAND", v->n, 0);
+    for (int i = 0; i < v->n && !m->faute; i++)
+        if (v->dx[i] == 0 && v->dy[i] == 0)
+            lie(m, v->plan[i] ? "CENTER'" : "CENTER", i, 0);
 }
 
 /* ---- les piles ---- */
@@ -849,9 +970,20 @@ static void make_table(Vm *m)
     const char *t = lis(m);
     int n;
     if (!t || classe(m, t, &n) != C_MOT) return;     /* l'original ne disait rien */
-    for (m->entree = 0; m->entree < FORTH_TABLE && !m->pile_hors && !m->faute; m->entree++) {
-        for (int b = 0; b < FORTH_BITS; b++)
-            m->zone[ZONE_ORIGINE / 2 + b] = (short)((m->entree >> b) & 1);
+    /* N/CUSTOM : une entrée par état des n voisins et de RAND, 2^(n+1) ; sans
+     * voisin, rien — le bureau refusait la table. */
+    int sur_mesure = m->voisinage == FORTH_CUSTOM;
+    int entrees = !sur_mesure ? FORTH_TABLE
+                : m->voisins.n > 0 ? 1 << (m->voisins.n + 1) : 0;
+    for (m->entree = 0; m->entree < entrees && !m->pile_hors && !m->faute; m->entree++) {
+        if (sur_mesure) {
+            for (int c = 0; c < m->nconstantes; c++)
+                if (m->bit_de[c] >= 0)
+                    m->zone[ZONE_ORIGINE / 2 + c] = (short)((m->entree >> m->bit_de[c]) & 1);
+        } else {
+            for (int b = 0; b < FORTH_BITS; b++)
+                m->zone[ZONE_ORIGINE / 2 + b] = (short)((m->entree >> b) & 1);
+        }
         /* LA PILE N'EST PAS REMISE entre deux entrées : la règle trouve ce
          * que la précédente a laissé. Elle est contrôlée avant chacune. */
         if (m->a3 > PILE_FOND || m->a3 < PILE_MARGE) m->pile_hors = 1;
@@ -867,7 +999,7 @@ static void interne(Vm *m, int n)
     case M_PLN0: case M_PLN1: case M_PLN2: case M_PLN3: {
         int k = n - M_PLN0;
         short v = depile(m);
-        if (m->entree < FORTH_TABLE) s->plans[k][m->entree] = v ? '1' : '0';
+        if (m->entree < FORTH_TABLE_MAX) s->plans[k][m->entree] = v ? '1' : '0';
         s->ecrits |= 1 << k;
         break;
     }
@@ -1117,6 +1249,7 @@ int forth_compile(const char *source, ForthSortie *s)
     }
 
     s->voisinage = m->voisinage;
+    s->voisins = m->voisins;
     int r = 0;
     if (m->faute == ERR_MEMOIRE) {
         snprintf(s->rendu, sizeof s->rendu, "%s", ERR_MEMOIRE);
@@ -1135,4 +1268,31 @@ int forth_compile(const char *source, ForthSortie *s)
     libere(m);
     free(m);
     return r;
+}
+
+/* Les voisins de la dernière déclaration N/CUSTOM, sans rien exécuter : le
+ * texte découpé et ses commentaires sautés comme par forth_compile(), puis
+ * chaque N/CUSTOM lu par lis_declaration(), la même que celle du
+ * compilateur. */
+int forth_voisins(const char *source, ForthVoisins *v)
+{
+    int trouve = -1;
+    memset(v, 0, sizeof *v);
+    Vm *m = calloc(1, sizeof *m);
+    if (!m || decoupe(m, source ? source : "") < 0) {
+        if (m) { libere(m); free(m); }
+        return -1;
+    }
+    for (const char *t = lis(m); t; t = lis(m)) {
+        t = saute_commentaire(m, t);
+        if (!t) break;
+        if (!strcmp(t, "N/CUSTOM")) {
+            const char *noms[FORTH_CUSTOM_MAX];
+            lis_declaration(m, v, noms);
+            trouve = v->n;
+        }
+    }
+    libere(m);
+    free(m);
+    return trouve;
 }

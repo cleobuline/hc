@@ -27,9 +27,12 @@ maccam/forth.wasm: maccam/forth.c maccam/forth_coeur.c maccam/forth_coeur.h \
                    hc_xcmd.c hc_xcmd.h
 	$(CLANG) $(CFLAGS) $(LIENS) -o $@ maccam/forth.c maccam/forth_coeur.c hc_xcmd.c
 
+# MACCAM lit aussi les déclarations N/CUSTOM du texte FORTH (9 novembre) :
+# il emporte le lecteur du compilateur, forth_voisins().
 maccam/maccam.wasm: maccam/maccam.c maccam/maccam_coeur.c maccam/maccam_coeur.h \
-                    hc_xcmd.c hc_xcmd.h
-	$(CLANG) $(CFLAGS) $(LIENS) -o $@ maccam/maccam.c maccam/maccam_coeur.c hc_xcmd.c
+                    maccam/forth_coeur.c maccam/forth_coeur.h hc_xcmd.c hc_xcmd.h
+	$(CLANG) $(CFLAGS) $(LIENS) -o $@ maccam/maccam.c maccam/maccam_coeur.c \
+	    maccam/forth_coeur.c hc_xcmd.c
 
 propre:
 	rm -f $(MODULES)

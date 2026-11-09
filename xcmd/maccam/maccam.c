@@ -31,13 +31,20 @@
  * ET LE 8 NOVEMBRE, décidé par elle aussi : le COMPTEUR. « the count of
  * window "CAM" » rend les cellules allumées de chaque plan, « 1834,52,0,0 »
  * — de quoi mesurer dans HC ce qu'une expérience fait : une aimantation,
- * un seuil, π par une pluie de Monte-Carlo. Il se lit et ne se pose pas. */
+ * un seuil, π par une pluie de Monte-Carlo. Il se lit et ne se pose pas.
+ *
+ * ET LE 9 NOVEMBRE, décidé par elle : les VOISINS SUR MESURE, N/CUSTOM,
+ * repris de son MacCam de bureau. « set the custom of window "CAM" to » le
+ * texte FORTH de la carte : la fenêtre y lit la dernière déclaration
+ * N/CUSTOM, comme le compilateur la lit (forth_voisins), et le voisinage 11
+ * s'en sert. */
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "hc_xcmd.h"
 #include "maccam_coeur.h"
+#include "forth_coeur.h"
 
 /* L'original gardait l'état d'une fenêtre dans son refCon : il pouvait en
  * ouvrir plusieurs. On en tient quelques-unes. */
@@ -209,7 +216,7 @@ static int message(Fenetre *f, const char *m)
 
 /* ---- les propriétés : setProp, getProp ---- */
 
-enum { PROPRIETES = 34 };
+enum { PROPRIETES = 35 };
 
 static const char *const NOMS[PROPRIETES] = {
     "hilite", "name", "visible", "height", "width", "rect",
@@ -218,7 +225,7 @@ static const char *const NOMS[PROPRIETES] = {
     "pln1", "pln0", "palette", "PictResource", "major", "minor",
     "alternate", "phaseA", "phaseB",
     "planes", "colors",                         /* les ajouts : voir pose() */
-    "rand", "count"
+    "rand", "count", "custom"
 };
 
 static int rang(const char *prop)
@@ -422,6 +429,15 @@ static int pose(Fenetre *f, const char *prop, const char *valeur)
         /* « count », l'ajout du 8 novembre : il se lit, il ne se pose pas.
          * Le poser ne change rien, comme une valeur incomprise ailleurs. */
         return 1;
+    case 34: {
+        /* « custom », l'ajout du 9 novembre : le texte FORTH d'une carte
+         * N/CUSTOM. Sans déclaration, la liste se vide, et le voisinage 11
+         * ne fait plus rien. */
+        ForthVoisins v;
+        if (forth_voisins(valeur, &v) < 0) v.n = 0;
+        cam_voisins(c, v.n, v.dx, v.dy, v.plan);
+        return 1;
+    }
     default:
         if (i >= 6 && i <= 13) {                /* image0 à image7 */
             image(f, i - 6, valeur);
@@ -499,6 +515,19 @@ static char *lit(Fenetre *f, const char *prop)
         if (f->ouverte) cam_compte(&f->cam, n);
         snprintf(t, sizeof t, "%u,%u,%u,%u", (unsigned)n[0], (unsigned)n[1],
                  (unsigned)n[2], (unsigned)n[3]);
+        return t;
+    }
+    case 34: {
+        /* « custom » : les voisins retenus, « dx dy plan » séparés par des
+         * virgules — « 1 0 0,-1 0 0 » —, vide sans déclaration. */
+        static char t[CAM_VOISINS_MAX * 16];
+        size_t k = 0;
+        t[0] = '\0';
+        for (int i = 0; i < f->cam.nvoisins && k < sizeof t; i++) {
+            int w = snprintf(t + k, sizeof t - k, "%s%d %d %d", i ? "," : "",
+                             f->cam.vdx[i], f->cam.vdy[i], f->cam.vplan[i]);
+            if (w > 0) k += (size_t)w;
+        }
         return t;
     }
     default:
