@@ -1,0 +1,10 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+   20489
+   [] [zebre] char 20481 to 20485 of card field 1
+   [] [zebre]
+   [] [e f]
+   [] [élè] char 4 to 6 of card field 1
+   [] [élèv] char 4 to 7 of card field 1
+   [] [élève studieux] char 4 to 17 of card field 1
+   [] [élève] char 4 to 8 of card field 1
+   [] [stud] char 10 to 13 of card field 1

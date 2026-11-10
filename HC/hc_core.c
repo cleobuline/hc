@@ -11676,12 +11676,28 @@ static int v3_cmd_sort(HctContexte *ctx, const HctNoeud *n)
             return 1;
         }
 
+        /* LA CLÉ PEUT CHANGER LES CARTES SOUS LE TRI, et il faut le voir.
+         *
+         * « sort cards by f() » évalue f une fois par carte, et f est un
+         * gestionnaire : il peut créer une carte, ou en supprimer une. Les
+         * deux tableaux étaient taillés pour le compte d'AVANT, et la boucle
+         * écrivait sans regarder ce compte : une carte créée par f, et
+         * « cles[k] » tombait hors du tableau — mesuré sous ASan avec une
+         * clé qui fait « doMenu "New Card" ». Une carte supprimée, elle,
+         * laissait un pointeur mort prêt à retourner dans la pile.
+         *
+         * On borne donc l'écriture, et après la boucle on relit la pile : si
+         * les cartes ne sont plus exactement celles qu'on a rangées, le tri
+         * se refuse, en le disant. La carte d'avant est guettée : la clé peut
+         * l'avoir supprimée elle aussi. */
         Object *avant = g_current_card;
-        int k = 0;
+        guette(&avant);
+        int k = 0, changees = 0, penurie = 0;
         for (int i = 0; i < stack->nparts; i++) {
             Object *c = stack->parts[i];
             if (c->type != OBJ_CARD) continue;
             if (marquees && !c->marked) continue;
+            if (k >= n2) { changees = 1; break; }
             /* Se placer SUR la carte pour évaluer sa clé : « field "nom" »
              * doit désigner le champ de celle-ci, pas de la carte de
              * départ. C'est tout le sens du tri par contenu. */
@@ -11696,15 +11712,32 @@ static int v3_cmd_sort(HctContexte *ctx, const HctNoeud *n)
             if (ctx->erreur) { ARENA_FREE; break; }
             cles[k] = dupstr(tmp);
             ARENA_FREE;
-            if (!cles[k]) break;
+            if (!cles[k]) { penurie = 1; break; }
             tab[k].cle = cles[k]; tab[k].rang = k; tab[k].card = c;
             k++;
         }
-        g_current_card = avant;
-        if (k < n2) {
+        if (avant) g_current_card = avant;
+        cesse_de_guetter(&avant);
+        if (!changees && !penurie && !ctx->erreur) {
+            int j = 0;
+            for (int i = 0; i < stack->nparts && !changees; i++) {
+                Object *c = stack->parts[i];
+                if (c->type != OBJ_CARD) continue;
+                if (marquees && !c->marked) continue;
+                if (j >= k || tab[j].card != c) changees = 1;
+                j++;
+            }
+            if (j != k || k != n2) changees = 1;
+        }
+        if (changees || k < n2) {
             for (int i = 0; i < k; i++) free(cles[i]);
             free(cles); free(tab); g_atop = sauve;
-            hct_ctx_faute(ctx, n, "mémoire insuffisante");
+            if (changees) {
+                set_result("Can't sort");
+                hct_ctx_faute(ctx, n, "sort : les cartes ont changé pendant le tri");
+            } else {
+                hct_ctx_faute(ctx, n, "mémoire insuffisante");
+            }
             return 1;
         }
 
@@ -12035,10 +12068,17 @@ static void find_mot_autour(const char *tx, const char *hit, size_t plen,
 /* Chercher UN morceau de motif dans un texte.
  * mode 0 = début de mot, 1 = n'importe où, 2 = mot entier.
  * Rend la position, ou NULL. */
+/* `lg`, s'il n'est pas nul, reçoit la longueur de la trouvaille DANS LE
+ * TEXTE D'ORIGINE, en octets. Ce n'est pas celle du motif dès qu'on replie :
+ * « ele » trouve « élè », trois octets cherchés et cinq trouvés. On prenait
+ * strlen(motif) : « find string "ele" » dans « un élève » rendait « él »
+ * pour foundText, et « find chars "elev" » un « è » coupé en deux — un octet
+ * orphelin dans the foundText, et un foundChunk trop court. Rejoué. */
 static const char *find_dans_texte(const char *tx, const char *pat, int mode,
-                                   int replier, int depuis)
+                                   int replier, int depuis, size_t *lg)
 {
     size_t plen = strlen(pat);
+    if (lg) *lg = plen;
     if (!plen) return NULL;
 
     /* SANS REPLI — « find international » —, on compare le texte tel quel.
@@ -12060,8 +12100,12 @@ static const char *find_dans_texte(const char *tx, const char *pat, int mode,
      * et rendre son offset désignerait une position dans un texte qui
      * n'existe nulle part — foundChunk pointerait à côté dès le premier
      * accent. */
+    /* TOUT LE TEXTE, sans plafond. On ne repliait que les 8 192 premiers
+     * octets du tampon — seize mille de texte, au mieux — et le reste n'était
+     * pas cherché du tout, sans un mot : dans un champ de 20 000 caractères,
+     * « find "zebre" » répondait « Not found » sur un mot de la fin, que
+     * « find international » trouvait. Un champ d'HyperCard en tient 30 000. */
     size_t n = strlen(tx);
-    if (n > 8192) n = 8192;
     char *ftx = malloc(n * 2 + 2);
     int  *car = malloc((n * 2 + 2) * sizeof *car);
     char  fpat[256];
@@ -12079,6 +12123,7 @@ static const char *find_dans_texte(const char *tx, const char *pat, int mode,
             if (strncasecmp(q, fpat, fplen) != 0) continue;
             if (mode == 2 && !find_fin_mot(q + fplen)) continue;
             res = tx + car[q - ftx];
+            if (lg) *lg = (size_t)(car[(q - ftx) + (ptrdiff_t)fplen] - car[q - ftx]);
             break;
         }
     }
@@ -12088,9 +12133,10 @@ static const char *find_dans_texte(const char *tx, const char *pat, int mode,
 
 /* Chercher une PHRASE contiguë. mode 3 = n'importe où, 4 = aux frontières. */
 static const char *find_phrase(const char *tx, const char *pat, int mode,
-                               int replier, int depuis)
+                               int replier, int depuis, size_t *lg)
 {
     size_t plen = strlen(pat);
+    if (lg) *lg = plen;
     if (!plen) return NULL;
 
     if (!replier) {
@@ -12104,8 +12150,12 @@ static const char *find_phrase(const char *tx, const char *pat, int mode,
         return NULL;
     }
 
+    /* TOUT LE TEXTE, sans plafond. On ne repliait que les 8 192 premiers
+     * octets du tampon — seize mille de texte, au mieux — et le reste n'était
+     * pas cherché du tout, sans un mot : dans un champ de 20 000 caractères,
+     * « find "zebre" » répondait « Not found » sur un mot de la fin, que
+     * « find international » trouvait. Un champ d'HyperCard en tient 30 000. */
     size_t n = strlen(tx);
-    if (n > 8192) n = 8192;
     char *ftx = malloc(n * 2 + 2);
     int  *car = malloc((n * 2 + 2) * sizeof *car);
     char  fpat[256];
@@ -12123,6 +12173,7 @@ static const char *find_phrase(const char *tx, const char *pat, int mode,
             if (mode == 4 && (!find_debut_mot(ftx, q) || !find_fin_mot(q + fplen)))
                 continue;
             res = tx + car[q - ftx];
+            if (lg) *lg = (size_t)(car[(q - ftx) + (ptrdiff_t)fplen] - car[q - ftx]);
             break;
         }
     }
@@ -12572,8 +12623,10 @@ static int v3_cmd_find(HctContexte *ctx, const HctNoeud *n)
                                 if (rr >= 0 && rf >= 0 && rf < rr) continue;
                             }
                         }
+                        size_t lg_hit = 0;
                         const char *hit = find_dans_texte(tx, morceaux[m], mode,
-                                                          !international, plancher);
+                                                          !international, plancher,
+                                                          &lg_hit);
                         if (!hit) continue;
                         vu = 1;
                         /* C'est le PREMIER morceau du motif qui est désigné
@@ -12582,7 +12635,7 @@ static int v3_cmd_find(HctContexte *ctx, const HctNoeud *n)
                             trouve_fl  = fl;
                             trouve_tx  = tx;
                             trouve_hit = hit;
-                            trouve_len = strlen(morceaux[m]);
+                            trouve_len = lg_hit;
                         }
                     }
                 }
@@ -12605,14 +12658,15 @@ static int v3_cmd_find(HctContexte *ctx, const HctNoeud *n)
                             if (rr >= 0 && rf >= 0 && rf < rr) continue;
                         }
                     }
+                    size_t lg_hit = 0;
                     const char *hit = find_phrase(tx, pat, mode, !international,
-                                                  plancher);
+                                                  plancher, &lg_hit);
                     if (!hit) continue;
                     ok = 1;
                     trouve_fl  = fl;
                     trouve_tx  = tx;
                     trouve_hit = hit;
-                    trouve_len = strlen(pat);
+                    trouve_len = lg_hit;
                 }
             }
         }
@@ -15509,7 +15563,7 @@ static int find_carte_contient(Object *cd, const char *pat, int mode,
             for (int i = 0; i < lay->nparts; i++) {
                 Object *fl = lay->parts[i];
                 if (find_champ_ok(fl, seul) &&
-                    find_phrase(hc_field_text(fl), pat, mode, replier, 0))
+                    find_phrase(hc_field_text(fl), pat, mode, replier, 0, NULL))
                     return 1;
             }
         }
@@ -15536,7 +15590,7 @@ static int find_carte_contient(Object *cd, const char *pat, int mode,
             for (int i = 0; i < lay->nparts && !vu; i++) {
                 Object *fl = lay->parts[i];
                 vu = find_champ_ok(fl, seul) &&
-                     find_dans_texte(hc_field_text(fl), mot, mode, replier, 0);
+                     find_dans_texte(hc_field_text(fl), mot, mode, replier, 0, NULL);
             }
         }
         if (!vu) return 0;
