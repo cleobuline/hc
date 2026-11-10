@@ -1,0 +1,9 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+── un tri ordinaire, par le nom
+   ABC
+── la clé crée une carte à chaque appel
+   [ERR]    !! sort : les cartes ont changé pendant le tri (v3, ligne 2 de button "B".t)
+── la clé supprime une carte
+   [ERR]    !! sort : les cartes ont changé pendant le tri (v3, ligne 4 de button "B".t)
+── et la pile tient encore
+   true
