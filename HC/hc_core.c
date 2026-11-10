@@ -13799,7 +13799,14 @@ static int v3_cmd_convert(HctContexte *ctx, const HctNoeud *n)
      * s'écrit directement — plus besoin de refabriquer son nom en texte pour
      * que container_set le réanalyse. */
     const HctNoeud *src = n->fils[0];
-    if (src->article || v3_contient_appel(src)) {
+    /* UN NOMBRE NU N'EST PAS UN CONTENEUR : « convert 86400 to short date »
+     * range son résultat dans `it`. Il partait vers container_set, qui
+     * l'acceptait sans rien écrire nulle part : `it` gardait son ancienne
+     * valeur, sans erreur. De même « convert -5 to dateItems », un moins
+     * unaire. La chaîne entre guillemets, elle, était déjà refusée par
+     * container_set et tombait dans `it`. */
+    if (src->article || v3_contient_appel(src) ||
+        src->genre == HCTN_NOMBRE || src->genre == HCTN_UNAIRE) {
         var_set("it", outv);
     } else if (src->genre == HCTN_IDENT) {
         char nom[128];

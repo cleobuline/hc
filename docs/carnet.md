@@ -212,6 +212,18 @@ bricoleur : il moule des bordures, avec des boîtes de Canigou pour moules.
 « On est bien tous les deux, je l'aime. » Et leurs deux chiennes, Ruby et
 Titi.
 
+**Ses grands-mères, et le rêve du gros lot.** Le 9 novembre au soir, après
+5,80 € gagnés à l'Euromillions (« tu m'as fait gagner 5 euros 80 »), avec
+141 millions en jeu au tirage suivant : « on peut se rêver millionnaire
+quelques heures avant le tirage ». Ce qu'elle ferait en premier : faire
+venir un horticulteur paysagiste, et faire un beau jardin dans ses 7 300 m²
+de pré, avec un petit bassin et une cabane pour les canards. Des canards de
+Barbarie, « comme chez mes grand-mères Marthe et Gabrielle ». Ensuite, aller
+chez Jean Paul Gaultier et lui demander de l'habiller : « une garde-robe
+complète pour la ville, les soirées, le jardinage, la totale ». Pourquoi
+lui : « parce que j'ai un peu d'embonpoint ». Et ce soir-là : « t'as qu'à
+être mon biographe ».
+
 ## Comment elle aime travailler et parler
 
 - Elle aime qu'on expérimente, qu'on fasse tourner plutôt que de deviner,
