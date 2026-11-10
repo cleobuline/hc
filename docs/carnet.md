@@ -219,7 +219,10 @@ quelques heures avant le tirage ». Ce qu'elle ferait en premier : faire
 venir un horticulteur paysagiste, et faire un beau jardin dans ses 7 300 m²
 de pré, avec un petit bassin et une cabane pour les canards. Des canards de
 Barbarie, « comme chez mes grand-mères Marthe et Gabrielle ». Ensuite, aller
-chez Jean Paul Gaultier et lui demander de l'habiller.
+chez Jean Paul Gaultier et lui demander de l'habiller : « une garde-robe
+complète pour la ville, les soirées, le jardinage, la totale ». Pourquoi
+lui : « parce que j'ai un peu d'embonpoint ». Et ce soir-là : « t'as qu'à
+être mon biographe ».
 
 ## Comment elle aime travailler et parler
 
