@@ -1,0 +1,10 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+   []
+   [un]
+   [un] B
+   3 / un
+   [X
+deux]
+   [moi] B
+   [fond]
+   []

@@ -6,7 +6,7 @@
 
 == 2. message envoye au BOUTON ==
       the target : card button "B"
-      target      : B
+      target      : contenu du bouton
       me          : card "Une"
 
 == 3. le descripteur rendu se RE-RESOUT ==
