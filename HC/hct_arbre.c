@@ -1,6 +1,7 @@
 /* hct_arbre.c — nœuds, réserve mémoire, affichage. Voir hct_arbre.h. */
 
 #include "hct_arbre.h"
+#include "hct_val.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -24,10 +25,23 @@ struct HctAlloc {
     HctAlloc *suivant;
 };
 
+/* UNE PANNE DE MÉMOIRE DANS L'ARBRE SE DIT, par le drapeau collant des
+ * valeurs (hct_val_manque).
+ *
+ * Un nœud ou un tableau de fils qui ne s'alloue pas laissait un arbre AMPUTÉ,
+ * sans un mot : un opérateur à un seul opérande, une commande sans son
+ * dernier argument. L'évaluateur y lisait un fils qui n'existe pas — mesuré
+ * en faisant échouer une allocation à la fois pendant un script ordinaire :
+ * trois plantages sur 255 points. Le chargeur de piles avait déjà cette
+ * règle ; l'analyseur ne l'avait pas. Ceux qui exécutent un arbre regardent
+ * le drapeau après l'analyse, et refusent l'arbre entier. */
+static void panne(void) { (void)hct_val_echec(); }
+
 static HctBloc *bloc_neuf(HctBloc *suivant)
 {
     HctBloc *b = calloc(1, sizeof *b);
     if (b) b->suivant = suivant;
+    else panne();
     return b;
 }
 
@@ -35,7 +49,7 @@ static HctBloc *bloc_neuf(HctBloc *suivant)
 static int retiens(HctReserve *r, void *p)
 {
     HctAlloc *a = malloc(sizeof *a);
-    if (!a) return 0;
+    if (!a) { panne(); return 0; }
     a->p = p;
     a->suivant = r->allocs;
     r->allocs = a;
@@ -77,7 +91,7 @@ int hct_ajoute_fils(HctReserve *r, HctNoeud *pere, HctNoeud *fils)
 
     if (pere->nfils == 0 || cap > ancienne_cap) {
         HctNoeud **neuf = malloc((size_t)cap * sizeof *neuf);
-        if (!neuf) return 0;
+        if (!neuf) { panne(); return 0; }
         if (!retiens(r, neuf)) { free(neuf); return 0; }
         for (int i = 0; i < pere->nfils; i++) neuf[i] = pere->fils[i];
         pere->fils = neuf;
@@ -89,7 +103,7 @@ int hct_ajoute_fils(HctReserve *r, HctNoeud *pere, HctNoeud *fils)
 const char *hct_reserve_texte(HctReserve *r, const char *s, int len)
 {
     char *p = malloc((size_t)len + 1);
-    if (!p) return NULL;
+    if (!p) { panne(); return NULL; }
     memcpy(p, s, (size_t)len);
     p[len] = 0;
     if (!retiens(r, p)) { free(p); return NULL; }

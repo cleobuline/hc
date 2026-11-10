@@ -152,10 +152,48 @@ static const char *OPS1 = "+-*/^&<>=(),;";
 
 /* ------------------------------------------------------------------- lexage */
 
+/* LE LOT DE SECOURS : une faute, puis la fin.
+ *
+ * Quand la mémoire manque, le lexeur rendait 0 sur un lot SANS jeton de fin,
+ * voire sans jetons du tout. Or 0 veut aussi dire « une faute de lexique »,
+ * et plusieurs appelants analysent quand même : le premier « jeton courant »
+ * lisait alors un tableau nul. Mesuré en faisant échouer une allocation à la
+ * fois : un plantage dans hct_bloc_script.
+ *
+ * Le lot en panne devient donc ce petit tableau STATIQUE, lisible par tout
+ * le monde, que hct_lot_libere reconnaît et ne libère pas — la sentinelle
+ * des valeurs (hct_val.c), pour la même raison. */
+static HctJeton g_secours[2] = {
+    { HCT_ERREUR, "", 0, 1, 1, NULL, "mémoire insuffisante" },
+    { HCT_FIN,    "", 0, 1, 1, NULL, NULL },
+};
+
+static int lot_en_panne(HctLot *lot)
+{
+    free(lot->jetons);
+    lot->jetons = g_secours;
+    lot->n = 2;
+    lot->cap = 0;
+    lot->nerr = 1;
+    return 0;
+}
+
+static int lexe(const char *src, HctLot *lot);
+
 int hct_lex(const char *src, HctLot *lot)
 {
     memset(lot, 0, sizeof *lot);
-    if (!src) { pousse(lot, HCT_FIN, "", 0, 1, 1, NULL, NULL); return 1; }
+    if (!src) {
+        if (!pousse(lot, HCT_FIN, "", 0, 1, 1, NULL, NULL)) return lot_en_panne(lot);
+        return 1;
+    }
+    /* lexe rend -1 sur une panne de mémoire, sinon ce que hct_lex rend. */
+    int r = lexe(src, lot);
+    return r < 0 ? lot_en_panne(lot) : r;
+}
+
+static int lexe(const char *src, HctLot *lot)
+{
 
     const char *p = src;
     int ligne = 1;
@@ -219,7 +257,7 @@ int hct_lex(const char *src, HctLot *lot)
             ligne++; deb_ligne = p;
             if (lot->n && lot->jetons[lot->n-1].genre != HCT_EOL)
                 if (!pousse(lot, HCT_EOL, q, 1, lg, cl, NULL, NULL))
-                    return 0;
+                    return -1;
             continue;
         }
 
@@ -232,12 +270,12 @@ int hct_lex(const char *src, HctLot *lot)
             while (*q && *q != '"' && *q != '\n' && *q != '\r') q++;
             if (*q != '"') {
                 if (!pousse(lot, HCT_ERREUR, p, (int)(q - p), ligne, col, NULL,
-                            "guillemet fermant manquant")) return 0;
+                            "guillemet fermant manquant")) return -1;
                 p = q;
                 continue;
             }
             if (!pousse(lot, HCT_CHAINE, p + 1, (int)(q - p - 1), ligne, col,
-                        NULL, NULL)) return 0;
+                        NULL, NULL)) return -1;
             p = q + 1;
             continue;
         }
@@ -291,9 +329,9 @@ int hct_lex(const char *src, HctLot *lot)
 
             if (points > 1) {
                 if (!pousse(lot, HCT_ERREUR, p, (int)(q - p), ligne, col, NULL,
-                            "nombre mal formé")) return 0;
+                            "nombre mal formé")) return -1;
             } else if (!pousse(lot, HCT_NOMBRE, p, (int)(q - p), ligne, col,
-                               NULL, NULL)) return 0;
+                               NULL, NULL)) return -1;
             p = q;
             continue;
         }
@@ -331,7 +369,7 @@ int hct_lex(const char *src, HctLot *lot)
             }
             int len = (int)(q - p);
             if (!pousse(lot, HCT_IDENT, p, len, ligne, col,
-                        hct_synonyme(p, len), NULL)) return 0;
+                        hct_synonyme(p, len), NULL)) return -1;
             p = q;
             continue;
         }
@@ -342,7 +380,7 @@ int hct_lex(const char *src, HctLot *lot)
             for (i = 0; OPS2[i]; i++)
                 if (p[0] == OPS2[i][0] && p[1] == OPS2[i][1]) {
                     if (!pousse(lot, HCT_OP, p, 2, ligne, COL(p), NULL, NULL))
-                        return 0;
+                        return -1;
                     p += 2; pris = 1; break;
                 }
             if (pris) continue;
@@ -350,7 +388,7 @@ int hct_lex(const char *src, HctLot *lot)
 
         /* --- opérateurs à un caractère -------------------------------- */
         if (strchr(OPS1, *p)) {
-            if (!pousse(lot, HCT_OP, p, 1, ligne, COL(p), NULL, NULL)) return 0;
+            if (!pousse(lot, HCT_OP, p, 1, ligne, COL(p), NULL, NULL)) return -1;
             p++;
             continue;
         }
@@ -362,7 +400,7 @@ int hct_lex(const char *src, HctLot *lot)
             unsigned char c = (unsigned char)p[2];
             if (c == 0xA4 || c == 0xA5 || c == 0xA0) {
                 if (!pousse(lot, HCT_OP, p, 3, ligne, COL(p), NULL, NULL))
-                    return 0;
+                    return -1;
                 p += 3;
                 continue;
             }
@@ -381,12 +419,12 @@ int hct_lex(const char *src, HctLot *lot)
             for (int k = 1; k < n; k++)
                 if (((unsigned char)p[k] & 0xC0) != 0x80) { n = k; break; }
             if (!pousse(lot, HCT_ERREUR, p, n, ligne, COL(p), NULL,
-                        "caractère inattendu")) return 0;
+                        "caractère inattendu")) return -1;
             p += n;
         }
     }
 
-    if (!pousse(lot, HCT_FIN, p, 0, ligne, COL(p), NULL, NULL)) return 0;
+    if (!pousse(lot, HCT_FIN, p, 0, ligne, COL(p), NULL, NULL)) return -1;
     return lot->nerr == 0;
 
     #undef COL
@@ -394,6 +432,6 @@ int hct_lex(const char *src, HctLot *lot)
 
 void hct_lot_libere(HctLot *lot)
 {
-    free(lot->jetons);
+    if (lot->jetons != g_secours) free(lot->jetons);
     memset(lot, 0, sizeof *lot);
 }

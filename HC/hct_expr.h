@@ -68,6 +68,10 @@ typedef struct {
      * l'analyse : mesuré, segfault à 60 000, et vingt mille passent encore.
      * Un script écrit à la main n'en imbrique pas vingt. */
     int           prof_bloc;
+
+    /* Les opérateurs binaires de l'expression en cours : la profondeur de
+     * son arbre ne peut pas les dépasser. Voir HCT_CHAINE_MAX, hct_expr.c. */
+    int           chaine;
 } HctAnalyseur;
 
 void hct_analyseur_init(HctAnalyseur *a, const HctLot *lot, HctReserve *r);

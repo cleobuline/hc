@@ -41,6 +41,7 @@
 #include "hct_lex.h"
 #include "hct_bloc.h"
 #include "hct_expr.h"
+#include "hct_val.h"
 
 /* Normalise les fins de ligne : « \r\n » (Windows) et « \r » seul (Mac
  * classique) deviennent « \n ». Sans ça, un script en « \r » n'est qu'une
@@ -292,7 +293,19 @@ const HctNoeud *script_arbre(Object *o)
 
     HctAnalyseur a;
     hct_analyseur_init(&a, lot, res);
+    int manque_avant = hct_val_manque();
     HctNoeud *racine = hct_bloc_script(&a);
+
+    /* Un arbre amputé par une panne de mémoire ne s'exécute pas (hct_arbre.c) :
+     * il lui manque des nœuds, et rien dans l'arbre ne dit lesquels. Le lot
+     * et la réserve restent posés : on ne retentera pas à chaque message. */
+    if (!manque_avant && hct_val_manque()) {
+        hct_val_manque_efface();
+        o->arbre_sain = 0;
+        o->arbre_faute_ligne = 0;
+        hc_emet_diagnostic("   !! script : mémoire insuffisante pour l'analyser");
+        return NULL;
+    }
 
     /* Une faute ne condamne plus TOUT le script, seulement le gestionnaire qui
      * la porte — trouve_gestionnaire l'écartera, et ce message-là repartira à
