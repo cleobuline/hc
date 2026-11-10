@@ -7689,6 +7689,32 @@ static int v3_ecrit_var_nombre(void *d, const char *nom, const char *val,
  * ================================================================== */
 
 /* Évalue un sous-arbre en texte, dans le contexte courant. */
+/* UN ARGUMENT, dans un tampon de HC_VAL octets — et une FAUTE s'il n'y
+ * tient pas.
+ *
+ * Les arguments d'un message voyagent dans des tableaux de taille fixe.
+ * v3_val_texte coupait à la taille du tampon sans rien dire : un texte de
+ * 163 840 caractères passé à un gestionnaire y arrivait à 65 535, et le
+ * script continuait sur un texte amputé. Mesuré. Lever la borne voudrait
+ * refaire le passage des arguments ; décidé par l'utilisatrice le 10
+ * novembre : la borne reste, et elle se DIT. Rend 0 sur une faute. */
+static int v3_argument(HctContexte *ctx, const HctNoeud *n, char *out)
+{
+    out[0] = '\0';
+    if (!n) return 1;
+    HctValeur v = hct_evalue(ctx, n);
+    if (!ctx->erreur && hct_val_manque()) {
+        hct_val_manque_efface();
+        hct_ctx_faute(ctx, n, "mémoire insuffisante");
+    }
+    if (!ctx->erreur && v.len >= HC_VAL)
+        hct_ctx_faute_txt(ctx, n, "paramètre trop long : %d octets, %d au plus",
+                          v.len, HC_VAL - 1);
+    if (!ctx->erreur) memcpy(out, v.txt ? v.txt : "", (size_t)v.len + 1);
+    hct_val_libere(&v);
+    return ctx->erreur == NULL;
+}
+
 static void v3_val_texte(HctContexte *ctx, const HctNoeud *n,
                          char *out, int outlen)
 {
@@ -10428,13 +10454,23 @@ static int v3_ecrit_objet(void *d, void *objet, const char *val, int mode)
     if (mode == 0) {
         pose = hc_set_field_text(o, val);
     } else {
-        ARENA_MARK;
-        char *fusion = arena_buf();
+        /* LA FUSION SE TAILLE SUR MESURE. Elle se faisait dans un tampon de
+         * HC_VAL octets : « put "FIN" after card field 1 », sur un champ de
+         * 81 920 caractères, le ramenait à 65 535 et perdait jusqu'au « FIN »
+         * qu'on ajoutait — sans un mot. « put … into » n'avait pas cette
+         * borne, si bien qu'un champ pouvait tenir un texte que le premier
+         * « after » détruisait. Mesuré. */
         const char *ancien = hc_field_text(o);
-        if (mode == 1) snprintf(fusion, HC_VAL, "%s%s", val, ancien);  /* before */
-        else           snprintf(fusion, HC_VAL, "%s%s", ancien, val);  /* after  */
-        pose = hc_set_field_text(o, fusion);
-        ARENA_FREE;
+        size_t la = strlen(ancien), lv = strlen(val);
+        char *fusion = malloc(la + lv + 1);
+        if (!fusion) pose = 0;
+        else {
+            if (mode == 1) { memcpy(fusion, val, lv);    memcpy(fusion + lv, ancien, la); }  /* before */
+            else           { memcpy(fusion, ancien, la); memcpy(fusion + la, val, lv); }     /* after  */
+            fusion[la + lv] = '\0';
+            pose = hc_set_field_text(o, fusion);
+            free(fusion);
+        }
     }
     g_current_card = sauve;
     /* Le champ est resté INTACT : on le dit. Voir hc_set_field_text. */
@@ -10966,6 +11002,20 @@ typedef struct { char *cle; int rang; Object *card; } SortItem;
 static int       g_sort_desc  = 0;
 static SortStyle g_sort_style = SORT_TEXT;
 
+/* La clé d'un tri par date : l'instant qu'elle désigne. « sort … dateTime »
+ * comparait ses clés COMME DES NOMBRES, et une date n'en est pas un :
+ * « 12/25/99 », « March 3, 2001 » n'étaient pas lues, toutes les clés se
+ * valaient, et le tri rendait l'ordre de départ. Mesuré sur trois dates.
+ * Ce qui ne se lit pas comme une date passe après, comme un texte dans un
+ * tri numérique. */
+static int cle_date(const char *s, double *d)
+{
+    struct tm tm;
+    if (!s || !*s || !parse_datetime(s, &tm)) return 0;
+    *d = (double)mktime(&tm);
+    return 1;
+}
+
 static int sort_cmp(const void *pa, const void *pb)
 {
     const SortItem *a = pa, *b = pb;
@@ -10973,7 +11023,12 @@ static int sort_cmp(const void *pa, const void *pb)
 
     if (g_sort_style == SORT_NUM || g_sort_style == SORT_DATE) {
         double x = 0, y = 0;
-        int nx = as_num(a->cle, &x), ny = as_num(b->cle, &y);
+        int nx, ny;
+        if (g_sort_style == SORT_DATE) {
+            nx = cle_date(a->cle, &x); ny = cle_date(b->cle, &y);
+        } else {
+            nx = as_num(a->cle, &x);   ny = as_num(b->cle, &y);
+        }
         /* Ce qui n'est pas un nombre passe après, plutôt que de valoir zéro et
          * de venir se mêler aux valeurs légitimes. */
         if (nx && ny) r = (x < y) ? -1 : (x > y) ? 1 : 0;
@@ -12751,8 +12806,7 @@ static int v3_cmd_send(HctContexte *ctx, const HctNoeud *n)
 
     ARENA_MARK;
     char *msgline = arena_buf();
-    v3_val_texte(ctx, n->fils[0], msgline, HC_VAL);
-    if (ctx->erreur) { ARENA_FREE; return 1; }
+    if (!v3_argument(ctx, n->fils[0], msgline)) { ARENA_FREE; return 1; }
 
     /* « send step to window "CAM" » : la fenêtre d'un module, qui reçoit la
      * ligne entière comme un xSendEvt (hc_wasm.h). Les fenêtres de l'hôte
@@ -12830,8 +12884,12 @@ static int v3_cmd_send(HctContexte *ctx, const HctNoeud *n)
         {
             HctValeur v;
             if (hct_evalue_texte(ctx, one, n, &v)) {
+                if (!ctx->erreur && v.len >= HC_VAL)        /* voir v3_argument */
+                    hct_ctx_faute_txt(ctx, n, "paramètre trop long : %d octets, "
+                                      "%d au plus", v.len, HC_VAL - 1);
                 snprintf(argv[argc], sizeof argv[argc], "%s", v.txt ? v.txt : "");
                 hct_val_libere(&v);
+                if (ctx->erreur) { ARENA_FREE; return 1; }
             } else {
                 eval_expr(one, argv[argc], sizeof argv[argc]);
             }
@@ -16667,10 +16725,7 @@ static int v3_message_pile(HctContexte *ctx, const HctNoeud *n)
     for (int i = 0; i < n->nfils && argc <= HC_ARGS_MAX; i++) {
         const HctNoeud *f = n->fils[i];
         if (f->genre == HCTN_MOTCLE) continue;
-        char *v = arena_buf();
-        v3_val_texte(ctx, f, v, HC_VAL);
-        if (ctx->erreur) return 1;
-        snprintf(argv[argc], HC_VAL, "%s", v);
+        if (!v3_argument(ctx, f, argv[argc])) return 1;
         argc++;
     }
 
@@ -16713,14 +16768,7 @@ static int v3_xcmd_module(HctContexte *ctx, const HctNoeud *n)
     for (int i = 0; i < n->nfils && argc <= HC_MODULE_PARAMS_MAX; i++) {
         const HctNoeud *f = n->fils[i];
         if (f->genre == HCTN_MOTCLE) continue;
-        char *v = arena_buf();
-        if (!v) {
-            hct_ctx_faute(ctx, n, "mémoire insuffisante");
-            return 1;
-        }
-        v3_val_texte(ctx, f, v, HC_VAL);
-        if (ctx->erreur) return 1;
-        snprintf(argv[argc], HC_VAL, "%s", v);
+        if (!v3_argument(ctx, f, argv[argc])) return 1;
         ptrs[argc] = argv[argc];
         argc++;
     }
@@ -17946,6 +17994,12 @@ static int v3_execute(Object *o, const char *message, int isfunc)
      * On ne pose le résultat que si un `return` a vraiment été exécuté :
      * l'écraser systématiquement effacerait celui qu'une commande du corps
      * vient d'y déposer — « go to card 99 » y met sa plainte. */
+    /* « the result » tient dans HC_VAL octets, et c'est par lui que passe la
+     * valeur d'une fonction : au-delà, elle était coupée en silence, comme
+     * les arguments (v3_argument). Elle se dit. */
+    if (x.a_rendu && x.retour.txt && x.retour.len >= HC_VAL)
+        hct_ctx_faute_txt(&x.ctx, NULL, "valeur rendue trop longue : %d octets, "
+                          "%d au plus", x.retour.len, HC_VAL - 1);
     if (x.a_rendu && x.retour.txt) set_result(x.retour.txt);
 
     /* L'erreur nomme le SCRIPT, pas seulement la ligne. « objet introuvable
@@ -18288,6 +18342,7 @@ static HctHote v3_hote(void)
     h.ecrit_message = v3_ecrit_message;
     h.lit_message   = v3_lit_message;
     h.resultat_vide = v3_resultat_vide;
+    h.arg_max = HC_VAL - 1;             /* les arguments d'une fonction de pile */
 
     return h;
 }
