@@ -1,0 +1,22 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+── after et before sur un champ de 81 920 caractères
+   81923 [FIN]
+   81928 [DEBUT]
+── un paramètre de 65 535 octets passe
+   paramètre reçu : 65535
+   par fonction : 65535
+   paramètre reçu : 65535
+── un paramètre de 81 920 octets, à un gestionnaire
+   [ERR]    !! paramètre trop long : 81920 octets, 65535 au plus (v3, ligne 6 de button "B".t)
+── à une fonction
+   [ERR]    !! paramètre trop long : 81920 octets, 65535 au plus (v3, ligne 6 de button "B".t)
+── par send
+   [ERR]    !! paramètre trop long : 81920 octets, 65535 au plus (v3, ligne 6 de button "B".t)
+── une fonction qui rend 40 960 octets : ça passe
+   40960
+── une fonction qui rend 163 840 octets
+   [ERR]    !! valeur rendue trop longue : 163840 octets, 65535 au plus (v3, ligne 0 de button "B".gros)
+   65535
+   après
+── les fonctions intégrées ne sont pas bornées
+   81920 81920 10

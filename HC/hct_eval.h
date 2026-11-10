@@ -227,6 +227,14 @@ typedef struct {
      *
      * NULL = l'hôte ne tient pas de résultat, il n'y a rien à vider. */
     void (*resultat_vide)(void *d);
+
+    /* LA PLUS LONGUE VALEUR QUE L'HÔTE SAIT RECEVOIR EN ARGUMENT d'une de ses
+     * fonctions, en octets ; 0 : pas de borne. Un hôte qui range les
+     * arguments dans des tampons de taille fixe les coupait EN SILENCE : la
+     * bibliothèque lève une faute à sa place, là où elle a le contexte pour
+     * le dire. Les fonctions intégrées (length, offset…) ne sont pas
+     * concernées : elles ne passent pas par l'hôte. */
+    int arg_max;
 } HctHote;
 
  

@@ -1109,6 +1109,17 @@ static HctValeur appel_valeurs(HctContexte *ctx, const HctNoeud *n,
         r = hct_val_calcul(acc); fait = 1;
     }
 
+    /* Un argument que l'hôte couperait : on le refuse ici, où l'on peut le
+     * dire (voir arg_max, hct_eval.h). */
+    if (!fait && ctx->hote.fonction && ctx->hote.arg_max > 0)
+        for (int i = 0; i < nargs; i++)
+            if (args[i].len > ctx->hote.arg_max) {
+                hct_ctx_faute_txt(ctx, n, "paramètre trop long : %d octets, "
+                                  "%d au plus", args[i].len, ctx->hote.arg_max);
+                fait = 1;
+                break;
+            }
+
     if (!fait && ctx->hote.fonction)
         fait = ctx->hote.fonction(ctx->hote.donnees, nom, args, nargs, &r);
 

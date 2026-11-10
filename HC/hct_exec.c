@@ -1877,6 +1877,7 @@ void hct_exec_init(HctExec *x, HctHote hote)
      * raison même que dit le commentaire du dessus : posé dans v3_hote, il
      * n'arrivait jamais à l'exécuteur, et rien ne sautait. */
     pont.saute_erreur  = hote.saute_erreur  ? saute_erreur_pont  : NULL;
+    pont.arg_max       = hote.arg_max;
 
     hct_ctx_init(&x->ctx, pont);
     x->globales = portee_neuve(NULL);
