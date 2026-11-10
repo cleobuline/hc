@@ -24,8 +24,14 @@
  *
  *   1. sur un CHAMP, les deux formes different — c'est le cas qui revelait le
  *      defaut, le contenu ne ressemblant pas a un descripteur ;
- *   2. sur un BOUTON aussi : « B » n'est pas « card button "B" ». Sans ce
- *      point, un bouton dont le nom est vide passerait le test par hasard ;
+ *   2. sur un BOUTON aussi : son CONTENU n'est pas « card button "B" ». Un
+ *      bouton est un conteneur — mesuré dans HyperCard (Basilisk II) par
+ *      l'utilisatrice le 10 novembre : « put "un" into cd btn 1 » range
+ *      « un » dans son contenu, et « put cd button 1 » l'affiche. « target »
+ *      rendait ici le NOM du bouton, « B », du temps où seul un champ était
+ *      un conteneur. « target » nu sur un bouton, précisément : non mesuré,
+ *      il suit la règle mesurée pour « cd button 1 ». Le bouton porte un
+ *      contenu, pour que le témoin ne passe pas sur une chaîne vide ;
  *   3. le descripteur rendu SE RE-RESOUT — c'est tout ce qu'on demande a un
  *      nom d'objet, et c'est ce qui distingue un vrai descripteur d'une
  *      chaine qui y ressemble ;
@@ -56,6 +62,7 @@ int main(void)
     Object *f = hc_new_field(c, "Champ");
     hc_set_field_text(f, "contenu du champ");
     Object *b = hc_new_button(c, "B");
+    hc_set_field_text(b, "contenu du bouton");
 
     /* Le gestionnaire est sur la CARTE : le message part vers le champ, ne
      * trouve pas preneur, et remonte. « the target » doit donc nommer le

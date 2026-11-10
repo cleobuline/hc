@@ -10395,8 +10395,15 @@ static void *v3_resout(void *d, const HctNoeud *ref, HctContexte *ctx)
     return NULL;
 }
 
-/* Le contenu d'un objet résolu : le texte d'un champ, le nom des autres,
- * comme dans HyperCard. */
+/* Le contenu d'un objet résolu : le texte d'un champ, le CONTENU d'un
+ * bouton, le nom des autres.
+ *
+ * UN BOUTON EST UN CONTENEUR. MESURÉ DANS HYPERCARD (Basilisk II) par
+ * l'utilisatrice le 10 novembre : « put "un" into cd btn 1 » range « un »
+ * dans le contenu du bouton, et « put cd button 1 » affiche « un ». HC
+ * rendait le NOM du bouton à la lecture et refusait l'écriture (« ne sait
+ * pas faire ») ; seul « set the contents of » passait. C'est par là qu'un
+ * bouton popup reçoit ses articles. Voir v3_ecrit_objet, le site jumeau. */
 /* La carte sur laquelle lire ou écrire un champ de fond résolu, si ce n'est
  * pas la carte courante — voir g_resout_carte. NULL : la carte courante. */
 static Object *carte_du_champ(Object *o)
@@ -10420,14 +10427,17 @@ static int v3_lit_objet(void *d, void *objet, HctValeur *out)
         *out = hct_val_texte(hc_field_text(o));
         g_current_card = sauve;
     }
+    else if (o->type == OBJ_BUTTON)
+        *out = hct_val_texte(o->contents ? o->contents : "");
     else *out = hct_val_texte(o->name ? o->name : "");
     return 1;
 }
 
 /* Écrire dans un objet résolu, sans repasser par le texte.
  *
- * Seuls les champs sont des conteneurs : un bouton rend 0, et l'exécuteur
- * refuse alors la ligne en disant pourquoi.
+ * Les champs et les BOUTONS sont des conteneurs (mesuré, voir v3_lit_objet) ;
+ * les autres objets rendent 0, et l'exécuteur refuse alors la ligne en
+ * disant pourquoi.
  *
  * On refait ici la concaténation de container_set plutôt que de l'appeler :
  * container_set prend une RÉFÉRENCE TEXTUELLE, et c'est justement le texte
@@ -10441,7 +10451,7 @@ static int v3_ecrit_objet(void *d, void *objet, const char *val, int mode)
 {
     (void)d;
     Object *o = objet;
-    if (!o || o->type != OBJ_FIELD) return 0;
+    if (!o || (o->type != OBJ_FIELD && o->type != OBJ_BUTTON)) return 0;
     if (champ_verrouille(o)) { set_result(""); return 1; }
     if (!val) val = "";
 
