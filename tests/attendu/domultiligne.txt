@@ -1,0 +1,29 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+── do "put 1" & return & "put 2" & return & "put 3"
+   1
+   2
+   3
+── put "put 10" & return & "put 20" into v
+  do v
+   10
+   20
+── do cd fld "F1"
+   100
+   200
+── do "put 7; put 8"
+   7
+   8
+── do "repeat with i = 1 to 2" & return & "put i" & return & "end repeat" & return & "put 9"
+   1
+   2
+   9
+── do "put 1" & return & return & "put 2"
+   1
+   2
+── do "put 1" & return & "exit t" & return & "put 2"
+  put "après"
+   1
+── do "put 1" & return & "put 2 +"
+   [ERR]    !! ne sait pas faire : do "put 1" & return & "put 2 +"
+── do "put 5"
+   5

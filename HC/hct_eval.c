@@ -447,6 +447,13 @@ static HctValeur binaire(HctContexte *ctx, const HctNoeud *n)
 {
     const char *op = n->op ? n->op : "";
 
+    /* Un arbre amputé par une panne de mémoire (hct_arbre.c) : on ne lit pas
+     * un opérande qui n'y est pas. */
+    if (n->nfils < 2 || !n->fils[0] || !n->fils[1]) {
+        hct_ctx_faute(ctx, n, "mémoire insuffisante");
+        return hct_val_vide();
+    }
+
     /* « and » et « or » évaluent à la demande : le second opérande n'est pas
      * calculé si le premier suffit. C'est ce que fait HyperCard, et ça compte
      * quand le second a des effets — un appel de fonction, par exemple. */
@@ -543,6 +550,11 @@ static HctValeur binaire(HctContexte *ctx, const HctNoeud *n)
 static HctValeur unaire(HctContexte *ctx, const HctNoeud *n)
 {
     const char *op = n->op ? n->op : "";
+
+    if (n->nfils < 1 || !n->fils[0]) {          /* arbre amputé, comme binaire */
+        hct_ctx_faute(ctx, n, "mémoire insuffisante");
+        return hct_val_vide();
+    }
 
     /* « there is a X » se traite AVANT d'évaluer son fils.
      *
@@ -1374,7 +1386,16 @@ int hct_evalue_texte(HctContexte *ctx, const char *src,
 
     HctAnalyseur a;
     hct_analyseur_init(&a, &lot, &res);
+    int manque_avant = hct_val_manque();
     HctNoeud *arbre = hct_expression(&a);
+    if (!manque_avant && hct_val_manque()) {     /* arbre amputé : on le dit */
+        hct_val_manque_efface();
+        hct_reserve_libere(&res);
+        hct_lot_libere(&lot);
+        hct_ctx_faute(ctx, origine, "mémoire insuffisante");
+        *out = hct_val_vide();
+        return 1;
+    }
 
     /* Tout le texte doit avoir été consommé, et sans faute. */
     const HctJeton *reste = &lot.jetons[a.i];
@@ -1508,16 +1529,21 @@ static HctValeur noeud_of(HctContexte *ctx, const HctNoeud *n)
                 free(nom);
                 return r;
             }
-            hct_val_libere(&v);
-
-            HctValeur vr;
-            if (ctx->hote.recours &&
-                ctx->hote.recours(ctx->hote.donnees, n, &vr, ctx)) {
-                free(nom);
-                return vr;
-            }
+            /* CE N'EST PAS UNE EXPRESSION : LE TEXTE LUI-MÊME, et X N'EST PAS
+             * RÉÉVALUÉ.
+             *
+             * On passait la main au recours, qui réévaluait X : dans « the
+             * value of f() », f était appelée DEUX fois — mesuré avec un
+             * compteur dans f — et le résultat valait « value of f », le
+             * source de la ligne, qui n'est la valeur de rien. Avec un
+             * littéral c'était une erreur, avec une variable ce même texte
+             * fabriqué : trois réponses pour une question.
+             *
+             * MESURÉ DANS HYPERCARD (Basilisk II) par l'utilisatrice le 10
+             * novembre : « put the value of "bonjour le monde" » rend
+             * « bonjour le monde », le texte tel quel. */
             free(nom);
-            return hct_evalue(ctx, sur);   /* sans hôte : au mieux */
+            return v;
         }
         /* « the sqrt of 2 », « the round of 1.5 » : la forme « of » des
          * fonctions de calcul. Même chose que « sqrt(2) », et le même code

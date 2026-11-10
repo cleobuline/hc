@@ -19705,9 +19705,12 @@ static int v3_do_ligne(const char *line)
     hct_lex(line, &lot);
     HctAnalyseur a;
     hct_analyseur_init(&a, &lot, &res);
+    int manque_avant = hct_val_manque();
     HctNoeud *bloc = hct_bloc_script(&a);
+    int ampute = !manque_avant && hct_val_manque();   /* voir hct_arbre.c */
+    if (ampute) hct_val_manque_efface();
 
-    if (!bloc || a.nerreurs || bloc->nfils == 0) {
+    if (!bloc || a.nerreurs || bloc->nfils == 0 || ampute) {
         hct_reserve_libere(&res);
         hct_lot_libere(&lot);
         return 0;

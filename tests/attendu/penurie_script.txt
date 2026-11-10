@@ -1,0 +1,4 @@
+=== une allocation en échec, à chaque point d'un script ===
+   balayage mené au bout : oui
+   plantages : 0
+   (avant correction : 3)

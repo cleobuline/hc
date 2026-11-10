@@ -313,7 +313,15 @@ HctValeur hct_chunk_supprime(const char *s, HctSorteChunk sorte,
          * — une espace, un saut de ligne — sont en ASCII par construction. */
         int lsep = 1;
         if (sorte == HCT_CH_ITEM) lsep = (int)strlen(sep_ou_virgule(delim));
-        if (fin < len)         fin += lsep;   /* le séparateur qui suit  */
+        if (sorte == HCT_CH_WORD) {
+            /* UN MOT N'EMPORTE QU'UN BLANC. Un mot entre guillemets peut être
+             * collé à ce qui le suit — « "a"é » — et l'octet d'après n'est
+             * alors pas un séparateur : l'emporter coupait le « é » en deux
+             * et laissait un octet orphelin dans le texte. Rejoué. */
+            if (fin < len && est_blanc(s[fin]))         fin++;
+            else if (deb >= 1 && est_blanc(s[deb - 1])) deb--;
+        }
+        else if (fin < len)    fin += lsep;   /* le séparateur qui suit  */
         else if (deb >= lsep)  deb -= lsep;   /* à défaut, celui d'avant */
     }
     if (deb < 0) deb = 0;

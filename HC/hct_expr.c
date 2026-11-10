@@ -122,9 +122,31 @@ static HctNoeud *faute(HctAnalyseur *a, const char *msg)
     return n;
 }
 
+/* UNE EXPRESSION NE DÉPASSE PAS MILLE OPÉRATEURS.
+ *
+ * Les parenthèses et les « not » étaient bornés (HCT_PROF_MAX), pas les
+ * CHAÎNES : « 1+1+1+… » se lit par une boucle, sans descendre, mais l'arbre
+ * qu'elle bâtit penche à gauche et devient aussi profond que la chaîne est
+ * longue. L'évaluateur, lui, y descend niveau par niveau.
+ *
+ * MESURÉ : un script qui fabrique « 1+1+…+1 » et le donne à value() passe à
+ * 20 000 termes et PLANTE à 50 000 — débordement de la pile de 8 Mo,
+ * l'application se ferme, et Cmd-. n'y peut rien. De même une longue suite
+ * de « & ».
+ *
+ * MILLE, ET PAS CINQ MILLE : la première borne, cinq mille, tenait dans le
+ * binaire optimisé et débordait encore sous ASan, dont les cadres de pile
+ * sont plusieurs fois plus gros — le harnais chainelongue l'a montré à 4 000
+ * termes. Un binaire de mise au point (Xcode, -O0) est entre les deux. Mille
+ * opérateurs sur une ligne, c'est déjà plus de trois mille caractères : un
+ * script d'HyperCard entier en tient 30 000. */
+#define HCT_CHAINE_MAX 1000
+
 static HctNoeud *binaire(HctAnalyseur *a, const char *op, HctJeton j,
                          HctNoeud *g, HctNoeud *d)
 {
+    if (++a->chaine > HCT_CHAINE_MAX)
+        return faute(a, "expression trop longue");
     HctNoeud *n = hct_noeud(a->reserve, HCTN_BINAIRE, j);
     if (!n) return NULL;
     n->op = op;
@@ -255,6 +277,7 @@ static const char *compose_ici(HctAnalyseur *a, int rang)
 
 static HctNoeud *rang_ou(HctAnalyseur *a)
 {
+    if (a->prof == 0) a->chaine = 0;        /* une expression commence */
     if (++a->prof > HCT_PROF_MAX) {
         a->prof--;
         return faute(a, "expression trop imbriquée");
@@ -1143,11 +1166,21 @@ static int nom_agregat(const HctJeton *j)
  * question « y avait-il un article ? » ne dépend pas de ce qui suit. */
 static HctNoeud *chunk_ou_of(HctAnalyseur *a)
 {
+    /* LES CHAÎNES DE « of » SE COMPTENT AUSSI. « char 1 of char 1 of … » et
+     * « the length of the length of … » descendent par ici sans passer par
+     * rang_ou : cinquante mille d'affilée débordaient la pile de
+     * l'ANALYSEUR lui-même. Mesuré, même plantage que les longues chaînes
+     * d'opérateurs (HCT_CHAINE_MAX). */
+    if (++a->prof > HCT_PROF_MAX) {
+        a->prof--;
+        return faute(a, "expression trop imbriquée");
+    }
     int article = 0;
     if (mot_ici(a, "the")) { avance(a); article = 1; }
 
     HctNoeud *n = chunk_ou_of_corps(a);
     if (n && article) n->article = 1;
+    a->prof--;
     return n;
 }
 
@@ -1365,6 +1398,7 @@ void hct_analyseur_init(HctAnalyseur *a, const HctLot *lot, HctReserve *r)
     a->prof = 0;
     a->prof_si = 0;
     a->prof_bloc = 0;
+    a->chaine = 0;
 }
 
 HctNoeud *hct_expression(HctAnalyseur *a)
@@ -1377,6 +1411,7 @@ HctNoeud *hct_expression(HctAnalyseur *a)
  * d'« answer ». */
 HctNoeud *hct_expression_sans_ou(HctAnalyseur *a)
 {
+    if (a->prof == 0) a->chaine = 0;
     return rang_et(a);
 }
 

@@ -820,10 +820,32 @@ static int execute_texte(HctExec *x, const char *src, const HctNoeud *origine)
     HctReserve res;
     memset(&res, 0, sizeof res);
 
+    /* TOUTES LES LIGNES DU TEXTE, PAS SEULEMENT LA PREMIÈRE.
+     *
+     * On n'analysait qu'UNE instruction, sans regarder ce qui restait :
+     * « do "put 1" & return & "put 2" » n'affichait que 1, et la suite
+     * disparaissait sans un mot — de même « do v », « do card field 1 » et
+     * « do "put 7; put 8" ». Seul un bloc (repeat … end repeat) passait, parce
+     * qu'il ne fait qu'une instruction. Relevé en relisant, puis MESURÉ DANS
+     * HYPERCARD (Basilisk II) par l'utilisatrice le 10 novembre : « do »
+     * y exécute toutes les lignes.
+     *
+     * Le texte s'analyse EN ENTIER avant d'exécuter quoi que ce soit : une
+     * faute à la troisième ligne refuse le tout, comme une ligne fautive
+     * ne s'exécute pas en partie (docs/mesures/ligne_fautive.txt). */
     HctAnalyseur a;
     hct_analyseur_init(&a, &lot, &res);
-    HctNoeud *arbre = hct_bloc_instruction(&a);
-    if (!arbre || a.nerreurs) {
+    int manque_avant = hct_val_manque();
+    HctNoeud *suite = hct_bloc_script(&a);
+    if (!manque_avant && hct_val_manque()) {     /* arbre amputé (hct_arbre.c) */
+        hct_val_manque_efface();
+        hct_reserve_libere(&res);
+        hct_lot_libere(&lot);
+        hct_ctx_faute(&x->ctx, origine, "mémoire insuffisante");
+        return 1;
+    }
+    if (!suite || a.nerreurs || suite->nfils == 0 ||
+        hct_expr_jeton(&a)->genre != HCT_FIN) {
         hct_reserve_libere(&res);
         hct_lot_libere(&lot);
         return 0;
@@ -831,8 +853,12 @@ static int execute_texte(HctExec *x, const char *src, const HctNoeud *origine)
 
     int deja = x->ctx.erreur != NULL;
 
+    /* Une instruction après l'autre, et non le bloc d'un coup : hct_exec
+     * prendrait ce bloc pour LE script (x->script), qui meurt avec cette
+     * réserve. Une faute ou un signal (exit, pass, return) arrête la suite. */
     x->profondeur++;
-    hct_exec(x, arbre);
+    for (int i = 0; i < suite->nfils && !x->ctx.erreur && !x->signal; i++)
+        hct_exec(x, suite->fils[i]);
     x->profondeur--;
 
     /* Le nœud fautif pointerait dans une réserve qu'on libère à l'instant :

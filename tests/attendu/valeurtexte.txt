@@ -1,0 +1,9 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+   appels : 1 / rendu : [bonjour le monde]
+   [bonjour le monde]
+   [bonjour le monde]
+   [un deux]
+   [5]
+   [é] 1
+   [a  c]
+   [a ]

@@ -1,0 +1,15 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+── 900 additions : calculées
+   901
+── 60 000 additions : le texte rendu tel quel, pas de plantage
+   120001
+── 60 000 concaténations par do : refusées
+   [ERR]    !! ne sait pas faire : do "put the length of (" & s & ")"
+   après
+── 300 « char 1 of » : calculés
+   a
+── 60 000 « char 1 of » : refusés
+   [ERR]    !! ne sait pas faire : do "put " & s
+   après
+── deux expressions de 900 à la suite : le compte repart
+   1802
