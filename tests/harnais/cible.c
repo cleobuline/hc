@@ -29,9 +29,11 @@
  *      l'utilisatrice le 10 novembre : « put "un" into cd btn 1 » range
  *      « un » dans son contenu, et « put cd button 1 » l'affiche. « target »
  *      rendait ici le NOM du bouton, « B », du temps où seul un champ était
- *      un conteneur. « target » nu sur un bouton, précisément : non mesuré,
- *      il suit la règle mesurée pour « cd button 1 ». Le bouton porte un
- *      contenu, pour que le témoin ne passe pas sur une chaîne vide ;
+ *      un conteneur. « target » nu sur un bouton, précisément : MESURÉ
+ *      lui aussi, le même jour — « put target », dans le script d'un bouton
+ *      qui contient « un », affiche « un » ; et « put the target » affiche
+ *      « card button "New Button" ». Le bouton porte un contenu, pour que
+ *      le témoin ne passe pas sur une chaîne vide ;
  *   3. le descripteur rendu SE RE-RESOUT — c'est tout ce qu'on demande a un
  *      nom d'objet, et c'est ce qui distingue un vrai descripteur d'une
  *      chaine qui y ressemble ;
