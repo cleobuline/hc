@@ -1,0 +1,26 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+── put "avant" into it
+  convert 86400 to short date
+  put "[" & it & "]"
+   [1/2/04]
+── put "avant" into it
+  convert 0 to long date
+  put "[" & it & "]"
+   [Friday, January 1, 1904]
+── put "avant" into it
+  convert 3000000000 to dateItems
+  put "[" & it & "]"
+   [1999,1,24,5,20,0,1]
+── put "avant" into it
+  convert "86400" to short date
+  put "[" & it & "]"
+   [1/2/04]
+── put "avant" into it
+  convert 86400 + 86400 to short date
+  put "[" & it & "]"
+   [1/3/04]
+── put "avant" into it
+  put 86400 into x
+  convert x to short date
+  put "[" & it & "]" && x
+   [avant] 1/2/04
