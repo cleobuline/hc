@@ -12928,13 +12928,22 @@ static int v3_cmd_send(HctContexte *ctx, const HctNoeud *n)
      * "t2" ».
      *
      * Ni le dépassement de récursion, qui a déjà dit sa faute, ni un Cmd-.
-     * ne s'ajoutent ici. Un VERBE de HyperTalk n'est pas concerné non plus :
-     * « send "beep" to me » arrive chez HyperCard, qui l'exécute — ce que HC
-     * ne fait pas encore, NON MESURÉ, et qu'une faute ici masquerait. */
+     * ne s'ajoutent ici.
+     *
+     * UN VERBE DE HYPERTALK, LUI, ARRIVE CHEZ HYPERCARD, QUI L'EXÉCUTE.
+     * « send "put 5 into x" to me » ne rangeait rien. MESURÉ DANS HYPERCARD
+     * (Basilisk II) par l'utilisatrice le 13 novembre : « put x », juste
+     * après, y affiche 5 — la ligne s'exécute, et voit les variables du
+     * gestionnaire qui l'a envoyée. Elle passe donc par le chemin de « do ».
+     * NON MESURÉ : ce que vaut « me » pendant cette ligne ; ici, celui de
+     * l'expéditeur. */
     if (!pris && g_depth < HC_MAX_DEPTH && !g_interrompu && !g_abandon &&
-        msg[0] && !v3_verbe_connu(msg)) {
-        emit(HC_ERR, "   !! personne ne répond à « %s »", msg);
-        set_result("Can't understand");
+        msg[0]) {
+        const char *ligne = skip_spaces(msgline);
+        if (!v3_verbe_connu(msg) || !v3_do_ligne(ligne)) {
+            emit(HC_ERR, "   !! personne ne répond à « %s »", msg);
+            set_result("Can't understand");
+        }
     }
     ARENA_FREE;
     return 1;

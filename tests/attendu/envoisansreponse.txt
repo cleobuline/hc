@@ -6,6 +6,9 @@
    t3 de B2
    []
    beep []
-   x=[x]
+   x=[5]
+   x=[7]
+   [ERR]    !! personne ne répond à « put »
+   put seul [Can't understand]
    [ERR]    !! personne ne répond à « t2 »
    [Can't understand]

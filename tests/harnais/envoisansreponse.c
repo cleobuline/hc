@@ -7,9 +7,10 @@
  * (gestionnaire w).
  *
  * Un message pris ailleurs que dans la chaîne de l'expéditeur (t3, dans le
- * bouton de la carte 2) n'est pas une faute. Un VERBE envoyé — « beep »,
- * « put » — n'en est pas une non plus ; HyperCard l'exécute, HC pas encore :
- * NON MESURÉ, voir x, qui reste vide. */
+ * bouton de la carte 2) n'est pas une faute.
+ *
+ * Et un VERBE envoyé s'exécute : MESURÉ DANS HYPERCARD (Basilisk II) le
+ * même jour, « send "put 5 into x" to me » puis « put x » y affiche 5. */
 #include "hc_core.h"
 #include <stdio.h>
 #include <string.h>
@@ -38,6 +39,10 @@ int main(void){
     "  put \"beep [\" & the result & \"]\"\n"
     "  send \"put 5 into x\" to me\n"
     "  put \"x=[\" & x & \"]\"\n"
+    "  send \"add 2 to x\" to me\n"
+    "  put \"x=[\" & x & \"]\"\n"
+    "  send \"put\" to me\n"
+    "  put \"put seul [\" & the result & \"]\"\n"
     "end v\n"
     "on w\n"
     "  t2\n"
