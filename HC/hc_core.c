@@ -12935,8 +12935,8 @@ static int v3_cmd_send(HctContexte *ctx, const HctNoeud *n)
      * (Basilisk II) par l'utilisatrice le 13 novembre : « put x », juste
      * après, y affiche 5 — la ligne s'exécute, et voit les variables du
      * gestionnaire qui l'a envoyée. Elle passe donc par le chemin de « do ».
-     * NON MESURÉ : ce que vaut « me » pendant cette ligne ; ici, celui de
-     * l'expéditeur. */
+     * Et « me » y reste l'expéditeur : mesuré le même jour, « send "put the
+     * name of me" to cd 1 », depuis un bouton, y affiche le nom du bouton. */
     if (!pris && g_depth < HC_MAX_DEPTH && !g_interrompu && !g_abandon &&
         msg[0]) {
         const char *ligne = skip_spaces(msgline);

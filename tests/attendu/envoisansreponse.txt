@@ -8,6 +8,7 @@
    beep []
    x=[5]
    x=[7]
+   card button "B"
    [ERR]    !! personne ne répond à « put »
    put seul [Can't understand]
    [ERR]    !! personne ne répond à « t2 »
