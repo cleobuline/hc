@@ -7,7 +7,9 @@
  *
  * Et « linefeed » est le caractère 10, distinct de « return » : MESURÉ DANS
  * HYPERCARD (Basilisk II) le même jour, « charToNum(linefeed) » y rend 10.
- * NON MESURÉ : qu'un linefeed ne coupe pas les lignes dans HyperCard. */
+ * Et un linefeed ne coupe pas les lignes : MESURÉ DANS HYPERCARD (Basilisk
+ * II) le même jour, « the number of lines of ("a" & linefeed & "b") » y
+ * rend 1. */
 #include "hc_core.h"
 #include <stdio.h>
 #include <string.h>
