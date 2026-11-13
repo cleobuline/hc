@@ -929,6 +929,17 @@ static HctValeur appel_valeurs(HctContexte *ctx, const HctNoeud *n,
             double d = nombre_de(args[0]);
             long code = (d >= 0 && d <= 0x10FFFF) ? (long)d : 0;
             if (code >= 0xD800 && code <= 0xDFFF) code = 0;
+            /* « return » EST LE CARACTÈRE 13. HC range ses lignes avec
+             * l'octet 10, et rendait donc 10 pour « charToNum(return) » ;
+             * « numToChar(13) » donnait un caractère qui n'était pas
+             * « return », et un texte bâti avec lui ne comptait qu'une
+             * ligne. MESURÉ DANS HYPERCARD (Basilisk II) par l'utilisatrice
+             * le 13 novembre : « charToNum(return) » y rend 13. Les deux
+             * codes se croisent ici et dans charToNum, pour que l'aller-
+             * retour tienne ; le texte rangé ne change pas. NON MESURÉ :
+             * « charToNum(linefeed) » — la constante reste ce qu'elle
+             * était, le même caractère que « return ». */
+            if (code == 13) code = 10; else if (code == 10) code = 13;
             char c[5]; int k = 0;
             if (code < 0x80) {
                 c[k++] = (char)code;
@@ -971,6 +982,8 @@ static HctValeur appel_valeurs(HctContexte *ctx, const HctNoeud *n,
             for (int i = 1; i < nb; i++)
                 cp = (cp << 6) | ((unsigned char)t[i] & 0x3F);
         }
+        /* Le croisement de numToChar, dans l'autre sens. */
+        if (cp == 10) cp = 13; else if (cp == 13) cp = 10;
         r = hct_val_nombre((double)cp); fait = 1;
     }
     if (!fait && nargs == 1 && !strcasecmp(nom, "random")) {
