@@ -12810,6 +12810,15 @@ static int v3_cmd_find(HctContexte *ctx, const HctNoeud *n)
  * plus besoin de repasser par le texte : c'est un vrai nœud HCTN_OBJET, que
  * hct_resout résout directement — avec un repli sur le texte, comme dans
  * v3_cmd_go, pour les formes qu'il ne couvre pas encore. */
+/* Le mot est-il un verbe de HyperTalk, que HyperCard exécute quand un
+ * message lui arrive sans avoir été pris en route ? */
+static int v3_verbe_connu(const char *mot)
+{
+    for (const HctCommande *c = hct_commande_table(); c->verbe; c++)
+        if (ci_equal(c->verbe, mot)) return 1;
+    return 0;
+}
+
 static int v3_cmd_send(HctContexte *ctx, const HctNoeud *n)
 {
     if (n->nfils < 3 || !v3_est_motcle(n, 1, "to")) return 0;
@@ -12911,7 +12920,31 @@ static int v3_cmd_send(HctContexte *ctx, const HctNoeud *n)
     set_result("");     /* un `return` dans le gestionnaire le remplira */
     /* « send "x" to <objet> » EST un nouveau destinataire : c'est ce que la
      * commande veut dire, et « the target » doit le suivre. */
-    hc_send_args(target, msg, argv, argc, 1);
+    int pris = hc_send_args(target, msg, argv, argc, 1);
+    /* PERSONNE NE L'A PRIS : c'est une faute, comme le même message écrit
+     * seul sur sa ligne (v3_commande_corps). « send "t2" to me », sans
+     * gestionnaire t2 nulle part, se taisait. MESURÉ DANS HYPERCARD (Basilisk
+     * II) par l'utilisatrice le 13 novembre : il y dit « Can't understand
+     * "t2" ».
+     *
+     * Ni le dépassement de récursion, qui a déjà dit sa faute, ni un Cmd-.
+     * ne s'ajoutent ici.
+     *
+     * UN VERBE DE HYPERTALK, LUI, ARRIVE CHEZ HYPERCARD, QUI L'EXÉCUTE.
+     * « send "put 5 into x" to me » ne rangeait rien. MESURÉ DANS HYPERCARD
+     * (Basilisk II) par l'utilisatrice le 13 novembre : « put x », juste
+     * après, y affiche 5 — la ligne s'exécute, et voit les variables du
+     * gestionnaire qui l'a envoyée. Elle passe donc par le chemin de « do ».
+     * NON MESURÉ : ce que vaut « me » pendant cette ligne ; ici, celui de
+     * l'expéditeur. */
+    if (!pris && g_depth < HC_MAX_DEPTH && !g_interrompu && !g_abandon &&
+        msg[0]) {
+        const char *ligne = skip_spaces(msgline);
+        if (!v3_verbe_connu(msg) || !v3_do_ligne(ligne)) {
+            emit(HC_ERR, "   !! personne ne répond à « %s »", msg);
+            set_result("Can't understand");
+        }
+    }
     ARENA_FREE;
     return 1;
 }
