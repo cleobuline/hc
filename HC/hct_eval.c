@@ -90,7 +90,12 @@ static const struct { const char *nom, *val; } CONSTANTES[] = {
     { "comma",    ","     },
     { "quote",    "\""    },
     { "colon",    ":"     },
-    { "linefeed", "\n"    },
+    /* « linefeed » est le caractère 10, distinct de « return » (13) : MESURÉ
+     * DANS HYPERCARD (Basilisk II) par l'utilisatrice le 13 novembre,
+     * « charToNum(linefeed) » y rend 10. HC range « return » sous l'octet 10 ;
+     * le caractère 10 d'HyperCard est donc ici l'octet 13, celui que rend
+     * « numToChar(10) » (voir le croisement dans numToChar). */
+    { "linefeed", "\r"    },
     { "formfeed", "\f"    },
     { "true",     "true"  },
     { "false",    "false" },
@@ -936,9 +941,8 @@ static HctValeur appel_valeurs(HctContexte *ctx, const HctNoeud *n,
              * ligne. MESURÉ DANS HYPERCARD (Basilisk II) par l'utilisatrice
              * le 13 novembre : « charToNum(return) » y rend 13. Les deux
              * codes se croisent ici et dans charToNum, pour que l'aller-
-             * retour tienne ; le texte rangé ne change pas. NON MESURÉ :
-             * « charToNum(linefeed) » — la constante reste ce qu'elle
-             * était, le même caractère que « return ». */
+             * retour tienne ; le texte rangé ne change pas. « linefeed »
+             * rend 10, mesuré le même jour : voir CONSTANTES. */
             if (code == 13) code = 10; else if (code == 10) code = 13;
             char c[5]; int k = 0;
             if (code < 0x80) {
