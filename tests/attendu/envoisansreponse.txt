@@ -1,0 +1,11 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+   [ERR]    !! personne ne répond à « t2 »
+   [Can't understand]
+   [ERR]    !! personne ne répond à « t3 »
+   [Can't understand]
+   t3 de B2
+   []
+   beep []
+   x=[x]
+   [ERR]    !! personne ne répond à « t2 »
+   [Can't understand]
