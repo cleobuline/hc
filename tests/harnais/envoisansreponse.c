@@ -10,7 +10,10 @@
  * bouton de la carte 2) n'est pas une faute.
  *
  * Et un VERBE envoyé s'exécute : MESURÉ DANS HYPERCARD (Basilisk II) le
- * même jour, « send "put 5 into x" to me » puis « put x » y affiche 5. */
+ * même jour, « send "put 5 into x" to me » puis « put x » y affiche 5.
+ * Et « me », pendant la ligne envoyée, reste l'expéditeur : mesuré le même
+ * jour, « send "put the name of me" to cd 1 », depuis un bouton, y affiche
+ * card button "New Button". */
 #include "hc_core.h"
 #include <stdio.h>
 #include <string.h>
@@ -41,6 +44,7 @@ int main(void){
     "  put \"x=[\" & x & \"]\"\n"
     "  send \"add 2 to x\" to me\n"
     "  put \"x=[\" & x & \"]\"\n"
+    "  send \"put the name of me\" to cd 1\n"
     "  send \"put\" to me\n"
     "  put \"put seul [\" & the result & \"]\"\n"
     "end v\n"
