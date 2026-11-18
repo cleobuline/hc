@@ -216,12 +216,22 @@ static void copie_poly(void) { hc_copy_part(poly); }
 static void copie_une(void)  { hc_copy_card(une); }
 static void copie_une_colle_b(void) { hc_copy_card(une); hc_paste_card(B); }
 
+/* TOUTES LES ALLOCATIONS DES TÉMOINS PASSENT PAR UN POINTEUR VOLATILE.
+ *
+ * gcc supprimait le premier malloc du piège à fuite à l'optimisation — le
+ * désassemblage n'en montrait qu'un — et le piège ne posait aucune fuite.
+ * Le 18 novembre, la machine Ubuntu de l'intégration continue a changé de
+ * compilateur, et le nouveau a supprimé aussi les « malloc(64) ; free » des
+ * trois témoins ci-dessous : plus aucune allocation à refuser, et
+ * l'instrument ne se voyait plus lui-même. Le noyau n'y était pour rien. */
+static void *(*volatile g_alloue)(size_t) = malloc;
+
 /* LES TÉMOINS DE L'INSTRUMENT. Une opération propre, qui doit sortir nette ;
  * et deux pièges, qu'il doit attraper. S'il manque l'un des trois, aucun
  * verdict sur le noyau n'a de sens. */
 static int op_temoin_propre(void)
 {
-    char *p = malloc(64);
+    char *p = g_alloue(64);
     if (!p) return 0;
     free(p);
     return 1;
@@ -229,7 +239,7 @@ static int op_temoin_propre(void)
 static int op_piege_partiel(void)          /* échoue en laissant une trace */
 {
     hc_set_field_text(texte, "abîmé");
-    char *p = malloc(64);
+    char *p = g_alloue(64);
     if (!p) return 0;
     free(p);
     hc_set_field_text(texte, "un deux trois");
@@ -237,7 +247,7 @@ static int op_piege_partiel(void)          /* échoue en laissant une trace */
 }
 static int op_piege_degrade(void)          /* réussit à moitié */
 {
-    char *p = malloc(64);
+    char *p = g_alloue(64);
     if (p) { free(p); hc_set_field_text(texte, "un deux trois"); }
     else   hc_set_field_text(texte, "à moitié");
     return 1;
@@ -252,10 +262,6 @@ static int op_piege_degrade(void)          /* réussit à moitié */
  * premier piège tombait dans ce trou. Le bloc perdu n'est donc gardé que
  * MASQUÉ, dans une globale, par une fonction qui ne laisse rien derrière elle. */
 static volatile unsigned long g_masque;
-/* Par un pointeur VOLATILE : gcc supprimait le premier malloc à
- * l'optimisation — le désassemblage n'en montrait qu'un — et le piège ne
- * posait aucune fuite. */
-static void *(*volatile g_alloue)(size_t) = malloc;
 static __attribute__((noinline)) int deux_blocs(void)
 {
     char *p = g_alloue(64);

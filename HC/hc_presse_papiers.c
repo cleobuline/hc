@@ -510,7 +510,10 @@ static Object *fond_reconnu_dans(const Object *modele, Object *pile)
 
     for (int i = 0; i < pile->nparts; i++) {
         Object *f = pile->parts[i];
-        if (f->type != OBJ_BACKGROUND) continue;
+        /* Une part nulle n'existe pas dans une pile vivante ; le nouvel
+         * analyseur de clang ne peut pas le savoir, et le test ne coûte
+         * rien. */
+        if (!f || f->type != OBJ_BACKGROUND) continue;
         if (!fond_meme_apparence(modele, f)) continue;
 
         if (f->id == modele->id) return f;
