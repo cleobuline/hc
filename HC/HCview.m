@@ -37,11 +37,6 @@ typedef struct {
     NSTextView   *fieldEditor;
     NSScrollView *fieldScroll;
 
-    /* édition d'un script */
-    Object       *editTarget;
-    NSTextView   *editView;
-    NSPanel      *editPanel;
-
     /* sélection et interaction */
 
     /* L'OBJET SÉLECTIONNÉ, PAR DOCUMENT — et il a mis du temps à arriver ici.
@@ -143,9 +138,6 @@ void hc_set_active_doc(void *d) { gDoc = d ? (HCDoc *)d : &gDoc0; }
 #define gEditingField    (gDoc->editingField)
 #define gFieldEditor     (gDoc->fieldEditor)
 #define gFieldScroll     (gDoc->fieldScroll)
-#define gEditTarget      (gDoc->editTarget)
-#define gEditView        (gDoc->editView)
-#define gEditPanel       (gDoc->editPanel)
 #define gSelected        (gDoc->selected)
 #define gPressed         (gDoc->pressed)
 #define gPressedCard     (gDoc->pressedCard)
@@ -5083,6 +5075,56 @@ static NSRange hcv_plage_de_ligne(NSString *s, NSInteger ligne)
     while (fin < len && [s characterAtIndex:fin] != '\n') fin++;
     if (fin > i && [s characterAtIndex:fin - 1] == '\r') fin--;
     return NSMakeRange(i, fin - i);
+}
+
+/* UNE FENÊTRE DE SCRIPT TIENT SON PROPRE OBJET.
+ *
+ * L'objet, la vue de texte et le panneau étaient rangés dans l'état du
+ * DOCUMENT ACTIF (editTarget, editView, editPanel de HCDoc). Le bouton OK les
+ * relisait là au moment du clic — chez le document actif à cet instant, qui
+ * n'est plus forcément celui qui avait ouvert le script. Signalé par
+ * l'utilisatrice DANS HC (l'application) le 18 novembre : ouvrir un script,
+ * aller dans une autre pile, revenir, et « le bouton OK ne marche plus ».
+ * Un panneau n'est jamais la fenêtre principale : cliquer dedans laisse
+ * l'autre pile active, son état n'a pas d'éditeur, et OK ne faisait rien.
+ * Même défaut, déduit du code et non observé, avec deux scripts ouverts dans
+ * la même pile : le second écrasait l'état du premier, dont OK enregistrait
+ * alors le texte du second.
+ *
+ * Chaque panneau a donc sa fiche, retrouvée par la fenêtre du bouton cliqué.
+ * L'adresse de l'objet y est remise à NULL quand il meurt (object_gone), comme
+ * toute adresse que l'interface retient. */
+@interface HCEditionScript : NSObject <NSWindowDelegate>
+@property (nonatomic) Object *cible;
+@property (nonatomic, strong) NSTextView *vue;
+@property (nonatomic, strong) NSPanel *panneau;
+@end
+
+static NSMutableArray<HCEditionScript *> *gEditions;
+
+@implementation HCEditionScript
+- (void)windowWillClose:(NSNotification *)note {
+    (void)note;
+    [self.panneau setDelegate:nil];
+    /* Plus tard : la fenêtre est encore en train de se fermer, et c'est
+     * cette fiche qui la retient. */
+    HCEditionScript *moi = self;
+    dispatch_async(dispatch_get_main_queue(), ^{ [gEditions removeObject:moi]; });
+}
+@end
+
+static HCEditionScript *hcv_edition_de(id sender)
+{
+    NSWindow *w = [sender respondsToSelector:@selector(window)] ? [sender window] : nil;
+    for (HCEditionScript *ed in gEditions)
+        if (ed.panneau == w) return ed;
+    return nil;
+}
+
+static void hcv_editions_oublient(Object *mort)
+{
+    for (HCEditionScript *ed in gEditions)
+        if (ed.cible == mort) ed.cible = NULL;
 }
 
 @interface HCScriptView : NSTextView
@@ -10116,7 +10158,7 @@ static void hcv_oublie_dans(HCDoc *d, Object *mort)
     if (!d) return;
     Object **emplacements[] = {
         &d->selected,
-        &d->editingField, &d->editTarget, &d->pressed, &d->pressedCard,
+        &d->editingField, &d->pressed, &d->pressedCard,
         &d->popupTarget,
         &d->scrollField,  &d->clickField, &d->paintUndoLayer, &d->keepLayer,
         &d->card,
@@ -10125,9 +10167,14 @@ static void hcv_oublie_dans(HCDoc *d, Object *mort)
         if (*emplacements[i] == mort) *emplacements[i] = NULL;
 }
 
+static void hcv_editions_oublient(Object *mort);
+
 static void cocoa_object_gone(Object *mort)
 {
     if (!mort) return;
+
+    /* Chaque fenêtre de script tient l'adresse de son objet. */
+    hcv_editions_oublient(mort);
 
     /* L'éditeur de polygone tient l'adresse du bouton qu'il édite. */
     if (mort == gPolyEdite) {
@@ -10598,7 +10645,6 @@ static NSTextField  *gSprayDensityLabel = nil;
  * affichée, scrollRangeToVisible n'a pas de géométrie à défiler et ne fait
  * rien. */
 - (void)editScriptOf:(Object *)obj atLine:(int)ligne {
-    gEditTarget = obj;
     NSPanel *panel = [[NSPanel alloc]
         initWithContentRect:NSMakeRect(300, 200, 480, 340)
                   styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskResizable)
@@ -10629,7 +10675,6 @@ static NSTextField  *gSprayDensityLabel = nil;
     [scroll setHasVerticalRuler:YES];
     [scroll setRulersVisible:YES];
     [[panel contentView] addSubview:scroll];
-    gEditView = tv;
 
     /* « Handlers: » et « Functions: », en haut — voir HCMenuGestionnaires.
      * Les mots sont ceux d'HyperCard. */
@@ -10672,7 +10717,16 @@ static NSTextField  *gSprayDensityLabel = nil;
     [ok setAutoresizingMask:NSViewMinXMargin | NSViewMaxYMargin];
     [[panel contentView] addSubview:ok];
 
-    gEditPanel = panel;
+    /* LA FENÊTRE TIENT SON OBJET ET SA VUE ELLE-MÊME — voir HCEditionScript. */
+    HCEditionScript *ed = [[HCEditionScript alloc] init];
+    ed.cible = obj;
+    ed.vue = tv;
+    ed.panneau = panel;
+    [panel setReleasedWhenClosed:NO];
+    [panel setDelegate:ed];
+    if (!gEditions) gEditions = [NSMutableArray array];
+    [gEditions addObject:ed];
+
     [panel makeKeyAndOrderFront:nil];
     if (ligne > 0) [self encadreLigne:ligne dansVue:tv];
 }
@@ -10713,16 +10767,17 @@ static NSTextField  *gSprayDensityLabel = nil;
 }
 
 - (void)checkScript:(id)sender {
-    (void)sender;
-    if (!gEditView) return;
+    HCEditionScript *ed = hcv_edition_de(sender);
+    NSTextView *vue = ed.vue;
+    if (!vue) return;
 
-    const char *src = [[gEditView string] UTF8String];
+    const char *src = [[vue string] UTF8String];
     HctRapport rap;
     hct_verifie(src ? src : "", &rap, YES);
 
     if (rap.n == 0) {
-        if ([gEditView isKindOfClass:[HCScriptView class]])
-            ((HCScriptView *)gEditView).ligneEncadree = 0;
+        if ([vue isKindOfClass:[HCScriptView class]])
+            ((HCScriptView *)vue).ligneEncadree = 0;
         NSAlert *a = [[NSAlert alloc] init];
         [a setMessageText:@"Script correct"];
         [a setInformativeText:@"No error found."];
@@ -10742,7 +10797,7 @@ static NSTextField  *gSprayDensityLabel = nil;
     }
 
     const HctSignalement *p = hct_premier(&rap);
-    if (p) [self encadreLigne:p->ligne dansVue:gEditView];
+    if (p) [self encadreLigne:p->ligne dansVue:vue];
 
     NSAlert *a = [[NSAlert alloc] init];
     [a setMessageText:rap.nerreurs
@@ -10756,11 +10811,22 @@ static NSTextField  *gSprayDensityLabel = nil;
 }
 
 - (void)saveScript:(id)sender {
-    if (gEditTarget && gEditView) {
-        hc_set_script(gEditTarget, [[gEditView string] UTF8String]);
+    HCEditionScript *ed = hcv_edition_de(sender);
+    if (!ed) return;
+    if (ed.cible && ed.vue) {
+        hc_set_script(ed.cible, [[ed.vue string] UTF8String]);
+    } else if (ed.vue) {
+        /* L'objet a été supprimé pendant que son script était ouvert : on
+         * le dit, et l'on garde la fenêtre, pour que le texte puisse encore
+         * être copié ailleurs. */
+        NSAlert *a = [[NSAlert alloc] init];
+        [a setMessageText:@"This object no longer exists"];
+        [a setInformativeText:@"Its script could not be saved. The text is still "
+                               @"in the window, if you want to copy it."];
+        [a runModal];
+        return;
     }
-    [gEditPanel close];
-    gEditPanel = nil; gEditView = nil; gEditTarget = nil;
+    [ed.panneau close];
     [gView setNeedsDisplay:YES];
 }
 
