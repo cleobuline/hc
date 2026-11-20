@@ -38,6 +38,9 @@ Télécharger le DMG de la dernière [version](https://github.com/cleobuline/hc/
 et copier `HC.app` dans `/Applications`. L'application est notariée : vous
 n'avez rien d'autre à faire qu'accepter son ouverture au premier lancement.
 
+Un mot à dire, une pile à montrer, une question ? Le livre d'or est sur
+[hc.labynet.fr/commentaires.php](https://hc.labynet.fr/commentaires.php).
+
 ## Construire
 
 Sur Mac, avec Xcode :
