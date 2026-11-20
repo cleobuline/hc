@@ -1670,3 +1670,13 @@ effaçait d'abord la destination. À jouer DANS HYPERCARD (Basilisk II) pour
 trancher : quelques pas, puis un image7 d'un rectangle plus petit que la
 fenêtre. Rien n'est corrigé ; le harnais de N/CUSTOM pose une image de la
 grille entière.
+
+LE 20 NOVEMBRE : « scale » ET LA FENÊTRE RECTANGULAIRE
+  Mesuré DANS HC (l'application) par l'utilisatrice : une fenêtre CAM
+  rectangulaire s'ouvre, sa grille prend la taille de la fenêtre, et
+  « scale » la refait carrée, de côté la largeur.
+  Mesuré DANS HYPERCARD (Basilisk II) par elle : l'original fait de même.
+  Décidé par elle : HC garde le rectangle, pour filmer MAC•CAM en hauteur
+  (des « Shorts »). maccam.c pose la hauteur d'après la hauteur de la
+  grille ; le harnais xcmd le montre : 12 × 20 à l'échelle 2 pose 24 × 40.
+  Non mesuré : le dessin, sur le Mac, d'une fenêtre rectangulaire agrandie.

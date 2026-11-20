@@ -717,8 +717,16 @@ int main(int argc, char **argv)
     fais("set the count of window \"CAM\" to \"1,2,3,4\"");
     fais("put the count of window \"CAM\"");
     fais("put item 1 of the count of window \"CAM\" + item 3 of the count of window \"CAM\"");
-    puts("   -- scale : la fenêtre, carrée, de côté la grille fois l'échelle");
+    puts("   -- scale : la fenêtre, de la forme de la grille fois l'échelle");
     fais("set the scale of window \"CAM\" to 2");
+    /* Une grille en hauteur garde sa forme : l'ajout de HC du 20 novembre.
+     * L'original refaisait la fenêtre carrée, de côté la largeur. La mesure
+     * est dans les « pose width » et « pose height » : cet hôte ne refait
+     * pas le rectangle d'une fenêtre qu'on agrandit. */
+    puts("   -- scale sur une grille en hauteur : le rectangle reste");
+    fais("get maccam(\"30,40,42,60\", \"Haute\", \"True\", 17, \"True\", \"True\")");
+    fais("set the scale of window \"Haute\" to 2");
+    fais("close window \"Haute\"");
     puts("   -- stepfast, jusqu'au clic : trois pas");
     g_souris = 3;
     fais("send stepfast to window \"CAM\"");

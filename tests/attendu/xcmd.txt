@@ -668,7 +668,7 @@
       = 5,0,0,0
    put item 1 of the count of window "CAM" + item 3 of the count of window "CAM"
       = 5
-   -- scale : la fenêtre, carrée, de côté la grille fois l'échelle
+   -- scale : la fenêtre, de la forme de la grille fois l'échelle
    set the scale of window "CAM" to 2
       hôte : pose 11 width = 24
       hôte : pose 11 height = 24
@@ -683,6 +683,16 @@
          ..........
          ..........
          ..........
+   -- scale sur une grille en hauteur : le rectangle reste
+   get maccam("30,40,42,60", "Haute", "True", 17, "True", "True")
+      hôte : ouvre 13 « Haute » 30,40,42,60, visible 1, style 17, flottante 1
+      hôte : image de 13, 12 × 20 à l'échelle 1 ; plans 1 à 3 : 0 point(s) ; couleur 0x80 = 255,255,255
+   set the scale of window "Haute" to 2
+      hôte : pose 13 width = 24
+      hôte : pose 13 height = 40
+      hôte : image de 13, 12 × 20 à l'échelle 2 ; plans 1 à 3 : 0 point(s) ; couleur 0x80 = 255,255,255
+   close window "Haute"
+      hôte : ferme 13
    -- stepfast, jusqu'au clic : trois pas
    send stepfast to window "CAM"
       hôte : image de 11, 12 × 12 à l'échelle 2 ; plans 1 à 3 : 0 point(s) ; couleur 0x80 = 255,255,255

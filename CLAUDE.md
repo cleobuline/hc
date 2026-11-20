@@ -104,6 +104,10 @@ LE 9 NOVEMBRE, au même endroit et décidé par elle : les VOISINS SUR MESURE,
 N/CUSTOM (major 11), repris de son MacCam de bureau — douze voisins à des
 déplacements quelconques, lus dans le texte FORTH, les mêmes pour les plans
 2 et 3 — et la propriété « custom » de la fenêtre CAM.
+LE 20 NOVEMBRE, au même endroit et décidé par elle : « scale » garde la forme
+d'une fenêtre CAM rectangulaire, pour filmer MAC•CAM en hauteur. L'original
+la refaisait carrée, mesuré par elle dans HyperCard. Une grille carrée ne
+change pas.
 
 ET IL N'Y EN AURA PAS D'AUTRE. Dit par l'utilisatrice le 2 octobre au soir :
 après l'éditeur de polygone et l'alpha des couleurs de bouton (le chantier

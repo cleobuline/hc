@@ -350,13 +350,18 @@ static int pose(Fenetre *f, const char *prop, const char *valeur)
         return 0;
     case 2: case 3: case 4: case 5:             /* visible, height, width, rect */
         return 0;
-    case 14: {                                  /* scale : la fenêtre, carrée */
+    case 14: {                                  /* scale */
+        /* La fenêtre prend la forme de sa grille, agrandie. L'original la
+         * refaisait carrée, de côté la largeur : une grille en hauteur y
+         * perdait son bas, mesuré par l'utilisatrice dans HyperCard. Garder
+         * le rectangle est l'ajout de HC, décidé par elle le 20 novembre,
+         * pour filmer MAC•CAM en hauteur. Une grille carrée ne change pas. */
         int e = nombre(valeur);
         if (e < 1) e = 1;
         f->echelle = e;
         if (f->ouverte) {
             pose_fenetre(f, "width", c->w * e);
-            pose_fenetre(f, "height", c->w * e);
+            pose_fenetre(f, "height", c->h * e);
         }
         dessine(f);
         return 1;

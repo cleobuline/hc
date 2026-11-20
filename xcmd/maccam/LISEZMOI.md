@@ -142,7 +142,7 @@ messages.
 | `pln7` à `pln4` | les tables de CAM-A (plans 0 et 1) et de CAM-B (plans 2 et 3) |
 | `image7` à `image0` | la peinture de la carte dans un rectangle, posée sur un plan |
 | `major`, `alternate`, `phaseA`, `phaseB`, `minor` | le voisinage, le découpage de Margolus, les phases |
-| `scale` | l'agrandissement ; la fenêtre se refait carrée |
+| `scale` | l'agrandissement ; la fenêtre garde la forme de sa grille. **L'ajout de HC**, décidé par l'utilisatrice le 20 novembre : l'original la refaisait carrée, de côté la largeur, et une grille en hauteur y perdait son bas |
 | `PictResource` | une photographie de la fenêtre au presse-papiers |
 | `palette` | acceptée, sans effet : la fenêtre garde sa palette |
 | `planes` | **l'ajout de HC** : les plans montrés, un chiffre par plan — `"1000"` le plan 0 seul, `"0011"` les plans 2 et 3, `"1111"` tous (le défaut) |
