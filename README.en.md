@@ -37,6 +37,9 @@ Download the DMG from the latest [release](https://github.com/cleobuline/hc/rele
 and copy `HC.app` to `/Applications`. The app is notarised: all you have to
 do is accept the prompt the first time you open it.
 
+Something to say, a stack to show, a question? Leave a word on the
+[comments page](https://hc.labynet.fr/commentaires.php).
+
 ## Building
 
 On a Mac, with Xcode:
