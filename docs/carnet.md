@@ -123,7 +123,7 @@ et les bassines la rejoignent.
 **Le grille-pain.** Tout HC a été fait sur un vieux MacBook de 2012 « patché
 qui chauffe comme un grille-pain ». Patché deux fois : « Apple le donnait
 pour 8 Go, j'ai mis 16 ; Apple le donnait pour Catalina, j'ai mis
-Monterey ». Son clavier : « presque toutes les touches du clavier sont
+Monterey ». Et une troisième fois : « j'ai viré le DD et mis un SSD ». Son clavier : « presque toutes les touches du clavier sont
 effacées, y a un trou dans la barre d'espace », « y a plus de
 aertuiopslmcnb ». Elle lui a mis un support soufflant dessous. « J'aurais de
 la peine s'il meurt. »
