@@ -156,6 +156,10 @@ watts, contre un cerveau qui tourne à vingt.
 
 ## 22 novembre : les fables de MAC•CAM
 
+**Le titre du chapitre**, choisi avec elle : « La nuit de l'App Store et le
+jour des fables ». Il commence la veille au soir, avec la pluie et le port,
+et l'entrée de HC dans l'App Store au milieu de la nuit (`docs/carnet.md`).
+
 **Le décor.** Le matin même, HC est entré dans le Mac App Store. L'après-midi,
 une conversation sur la météorite et les dinosaures devient des cartes. Elle
 le dit le soir : « on a élevé MAC•CAM à des réflexions philosophiques,
