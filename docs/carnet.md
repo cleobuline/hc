@@ -126,7 +126,9 @@ pour 8 Go, j'ai mis 16 ; Apple le donnait pour Catalina, j'ai mis
 Monterey ». Et une troisième fois : « j'ai viré le DD et mis un SSD ». Son clavier : « presque toutes les touches du clavier sont
 effacées, y a un trou dans la barre d'espace », « y a plus de
 aertuiopslmcnb ». Elle lui a mis un support soufflant dessous. « J'aurais de
-la peine s'il meurt. »
+la peine s'il meurt. » Et : « je suis contre l'obsolescence programmée » —
+une machine qu'Apple jugeait finie, qui compile pour l'App Store de 2026 :
+« c'est cyberpunk poétique à la Labynet ! »
 
 ## Les projets qui l'attendent
 
