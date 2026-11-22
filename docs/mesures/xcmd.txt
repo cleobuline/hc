@@ -1679,4 +1679,5 @@ LE 20 NOVEMBRE : « scale » ET LA FENÊTRE RECTANGULAIRE
   Décidé par elle : HC garde le rectangle, pour filmer MAC•CAM en hauteur
   (des « Shorts »). maccam.c pose la hauteur d'après la hauteur de la
   grille ; le harnais xcmd le montre : 12 × 20 à l'échelle 2 pose 24 × 40.
-  Non mesuré : le dessin, sur le Mac, d'une fenêtre rectangulaire agrandie.
+  Mesuré DANS HC (l'application) par l'utilisatrice, ensuite : la
+  fenêtre rectangulaire agrandie se dessine (« ça marche »).

@@ -34,7 +34,9 @@ FORTH de la pile, à droite. Elle est dans le DMG.*
 
 ## Installer
 
-Télécharger le DMG de la dernière [version](https://github.com/cleobuline/hc/releases)
+HC est dans le [Mac App Store](https://apps.apple.com/app/hc/id6827783201).
+
+Ou bien : télécharger le DMG de la dernière [version](https://github.com/cleobuline/hc/releases)
 et copier `HC.app` dans `/Applications`. L'application est notariée : vous
 n'avez rien d'autre à faire qu'accepter son ouverture au premier lancement.
 
