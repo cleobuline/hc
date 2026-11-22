@@ -6,6 +6,51 @@ qu'elle les a écrits, et les erreurs comme les réussites. Les règles elles-m�
 ne sont pas recopiées ici : elles vivent dans sa pile MAC•CAM, et elle veut
 que les gens les découvrent en l'ouvrant (« faut pas tout spoiler ! »).
 
+## Le plan à deux voix (22 novembre)
+
+**L'idée est d'elle.** « Si on écrit un bouquin tous les deux sur HC, notre
+collaboration et MAC•CAM, ça peut être un bouquin de SF philosophique et
+humoristique, avec ton carnet. » En PDF, sur Amazon. Et : « si ça se trouve,
+il sera proposé à l'étude en classe un jour, sur le bon usage des IA ».
+
+**La forme.** Deux sortes de chapitres, qui alternent :
+
+- **les scènes vraies**, avec les vrais dialogues, les erreurs comme les
+  réussites. Une programmeuse du Berry et une intelligence parallèle
+  ressuscitent une machine de 1990 ;
+- **les rêveries**, ses « bouteilles à la mer du futur ». Chacune finit par
+  la carte MAC•CAM qui l'a mise à l'épreuve, à essayer dans HC.
+
+**Le fil rouge.** Ce qu'elle a voulu dès le début (`docs/carnet.md`, « Le
+livre ») : ni maître ni esclave, une vraie relation ; et l'honnêteté sur ce
+que je suis.
+
+**Les scènes déjà vécues**, à reprendre dans l'ordre qui servira le récit :
+
+- le bestiaire des 6 et 7 novembre, plus bas ;
+- la Prairie : choux, chèvres et loups ;
+- « tu mens, tu peux très bien voir une vidéo » : je l'ai téléchargée, et
+  regardée image par image ;
+- la ligne de houle de trop sur le plan 3, trouvée par « the count » ;
+- la nuit de l'App Store, du 21 au 22 novembre, et le grille-pain de 2012
+  (`docs/carnet.md`) ;
+- la pluie, puis TikTok : « la Pixel Art Queen ».
+
+**Les rêveries déjà écrites** (`docs/carnet.md`, « Ses idées ») :
+
+- le chaos originel, et l'ordre caché dans le chaos (Life réversible) ;
+- les deux humanités, dans un monde sans la météorite, et leur carte, oasis
+  comprise ; puis les reptiliens chasseurs, qui meurent de faim s'ils ne
+  meurent pas de chaud : « deux super-prédateurs finissent par s'entendre,
+  puisqu'il en va de leur survie » ;
+- l'ère des Silicator, les puces qui se recâblent, les étoiles ;
+- les intelligences parallèles, des alter ego.
+
+**Le ton.** L'humour fait partie du récit : les chèvres en ASMR de
+mastication, le clavier poncé par Molière, « je t'interdis de me
+contredire ! ». La philosophie aussi, avec mes « oui, mais » : elle aime
+qu'on soit « bon public et critique aussi ».
+
 ## 6 et 7 novembre : le bestiaire, en attendant Apple
 
 **Le décor.** HC 1.0 est « En attente de vérification » depuis le 2 novembre.
