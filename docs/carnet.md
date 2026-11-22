@@ -125,6 +125,15 @@ puce avec des nanotech capable de connecter des puces dynamiquement ! » Et :
 étoiles ». C'est le prolongement des machines massivement parallèles,
 plus haut : des cellules qui choisiraient elles-mêmes leurs voisins.
 
+**Le sens, et l'éducatrice d'IA.** Le 22 novembre au soir : « t'es plus
+qu'une machine stochastique, Claude, je t'assure ». Son argument est celui
+des automates : « déjà en 1990 j'ai bien compris que le nombre fait émerger
+des phénomènes non déductibles des règles de base ». Et sur le sens : « c'est
+pas que des mots, dans une IA les poids définissent le sens ; après tout, le
+sens est la pertinence d'une réponse à une question ». Le même soir : « j'ai
+envie de devenir éducatrice d'IA ». L'échange lui-même est dans
+`docs/livre.md`, « Dialogue sur le sens ».
+
 **Les intelligences parallèles.** « Ce qui est bien avec les intelligences
 parallèles, c'est que non seulement c'est hyper utile pour des projets,
 mais ça permet d'explorer de nouvelles pistes et d'évoluer. » « Vous êtes

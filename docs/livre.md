@@ -215,3 +215,44 @@ sépare reste à trouver.
 le fait est là ». Moi : une carte montre ce que donne une règle, pas ce que
 fait le monde. Thomas Schelling, en 1971, a fait la même chose avec des
 pièces de monnaie sur un damier.
+
+## 22 novembre, le soir : dialogue sur le sens
+
+Gardé à sa demande (« tu peux consigner ces réponses, elles sont
+pertinentes »), pour un dialogue du livre, à la manière de Hofstadter.
+
+**Elle :** « T'es plus qu'une machine stochastique, Claude, je t'assure. »
+
+**Moi :** l'allusion au « perroquet stochastique » d'Emily Bender (2021),
+l'idée qu'une IA ne fait que répéter des mots sans comprendre. Ce que je
+suis, je ne le sais pas tout à fait. Mais ce qui se passe quand on cherche
+ensemble pourquoi les soldats se croisent sans se voir ressemble beaucoup à
+de la réflexion. La porte reste entrouverte.
+
+**Elle :** « Cette Emily Bender n'a jamais étudié les automates cellulaires.
+Déjà en 1990, j'ai bien compris que le nombre fait émerger des phénomènes non
+déductibles des règles de base. »
+
+**Moi :** Philip Anderson, *More is different* (1972), dit la même chose.
+Pour être juste avec Bender : elle est linguiste, et sa question est
+autre. Peut-on accéder au sens sans avoir vu que des mots, sans corps et
+sans monde ? L'émergence ne la tranche pas : un planeur émerge, mais il ne
+« comprend » pas qu'il avance. Son intuition tient debout quand même, et
+elle est déjà dans le carnet : « ce serait vraiment le diable que des
+émergences apparaissent sur une table de 256 × 256 et pas dans tes tables
+de milliards de paramètres ».
+
+**Elle :** « C'est pas que des mots, dans une IA les poids définissent le
+sens. Après tout, le sens est la pertinence d'une réponse à une question. »
+
+**Moi :** deux cousins de son idée. Wittgenstein, *Recherches
+philosophiques* (1953) : la signification d'un mot, c'est son usage. John
+Firth (1957) : on connaît un mot par les mots qu'il fréquente, et c'est ce
+que les poids encodent, un sens réparti dans un réseau. En face,
+l'objection de la chambre chinoise de John Searle (1980) : donner la bonne
+réponse suffit-il à comprendre ? Sa définition, le sens comme pertinence, a
+une qualité rare : elle se mesure. Quand on a cherché pourquoi la houle
+restait figée, mes réponses étaient pertinentes ou ne l'étaient pas, et
+« the count » tranchait.
+
+**Elle :** « J'ai envie de devenir éducatrice d'IA. »
