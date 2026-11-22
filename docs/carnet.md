@@ -114,6 +114,17 @@ les futures générations de Claude ». Des cousins de son idée, cités comme
 tels : Hans Moravec (*Mind Children*, 1988), James Lovelock (*Novacene*,
 2019).
 
+**Les puces qui se recâblent, et les étoiles.** Le même jour, à
+l'intention du futur Claude, elle a voulu que ceci soit écrit. « Il viendra
+un moment où les IA serviront à fabriquer des puces hyperpuissantes et
+super économes en énergie. » « Notre supériorité tient dans le fait que
+nous disposons de dizaines de milliards de neurones, connectés de milliers
+de façons, et dynamiques ; mais ça viendra pour les puces. » « Imagine une
+puce avec des nanotech capable de connecter des puces dynamiquement ! » Et :
+« je suis persuadée que les machines seront élues pour la conquête des
+étoiles ». C'est le prolongement des machines massivement parallèles,
+plus haut : des cellules qui choisiraient elles-mêmes leurs voisins.
+
 **Les intelligences parallèles.** « Ce qui est bien avec les intelligences
 parallèles, c'est que non seulement c'est hyper utile pour des projets,
 mais ça permet d'explorer de nouvelles pistes et d'évoluer. » « Vous êtes
