@@ -247,6 +247,26 @@ git. On l'écrira ensemble. Les mémos de scènes s'accumulent dans
 écrit : « tout à fait l'illustration de ma théorie de l'ordre caché dans le
 chaos ». C'est la suite de son idée du chaos originel.
 
+**La boîte à idées, pour un après-midi pluvieux.** Le 22 novembre, une idée
+qui lui « a trotté dans la tête cet après-midi » : MAC•CAM qui fait de la
+musique. « Générer des rythmes avec des mosaïques, ou des mélodies avec
+Brian's Brain. » Une boîte à rythmes de 16 pas, comme les machines à grille :
+chaque plan un instrument, chaque pas de l'automate une nouvelle mesure.
+Le chemin mesuré dans le code ce soir-là : un script de HC ne peut pas écrire
+lui-même un .mid, puisque numToChar rend de l'UTF-8 et que les octets 10 et 13
+s'échangent (HC/hct_eval.c). D'où son choix : « on fera un MIDI à nous en
+texte, et on le convertira en .mid ». Il faudra une petite propriété de la
+fenêtre CAM pour lire une rangée : une extension de MAC•CAM, à décider par
+elle. Et peut-être que Claude-Morphée, le rêveur du vendredi, « aura des
+idées lui aussi, qui sait ? ».
+
+**Le rêve du vendredi.** Décidé par elle le 22 novembre : chaque vendredi à
+4 h 13, heure de Paris, une tâche planifiée réveille Claude, qui relit le
+carnet et le livre, tire au hasard des souvenirs et une étincelle, et écrit
+un rêve dans `docs/reves/`. À 6 h, son VPS le copie sur labynet.fr/reves/ ;
+l'après-midi, la radio de Labynet le lit à l'antenne. « Git comme capsule
+temporelle. »
+
 **Le reste, remis à plus tard par elle** (« procrastinons ») :
 
 - le menu de Labynet, à ranger en rubriques ;
