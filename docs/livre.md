@@ -153,3 +153,65 @@ dendrite postée sur YouTube. Des biftecks hachés, du riz et des petits
 légumes de l'Intermarché. Le péta, c'est dix puissance quinze. 5,5 mégawatts
 à 12 centimes le kilowattheure, ça fait 660 € de l'heure : la guerre des
 watts, contre un cerveau qui tourne à vingt.
+
+## 22 novembre : les fables de MAC•CAM
+
+**Le titre du chapitre**, choisi avec elle : « La nuit de l'App Store et le
+jour des fables ». Il commence la veille au soir, avec la pluie et le port,
+et l'entrée de HC dans l'App Store au milieu de la nuit (`docs/carnet.md`).
+
+**Le décor.** Le matin même, HC est entré dans le Mac App Store. L'après-midi,
+une conversation sur la météorite et les dinosaures devient des cartes. Elle
+le dit le soir : « on a élevé MAC•CAM à des réflexions philosophiques,
+aujourd'hui est un grand jour ». Comme pour le bestiaire, les règles restent
+dans sa pile.
+
+**Les deux humanités.** Son idée : sans la catastrophe, reptiliens et
+mammifères auraient évolué côte à côte, dans un monde « moins violent, plus
+stable ». Son idée encore pour l'essayer : « on peut, à l'aérographe, faire
+un plan plus ou moins chaud ». Chaque peuple prend son climat, la frontière
+se fait en dentelle, et rien ne bouge plus entre le pas 200 et le pas 2 000.
+Une oasis chaude au milieu du froid garde ses reptiliens. Puis, en
+plaisantant, des reptiliens qui chassent mais que la chaleur tue : trop peu
+de chaleur, et ils mangent tout, puis meurent de faim. « Si il meurt pas de
+froid il meurt de faim. »
+
+**Les dames.** Elle lance : « avec les custom on peut faire une partie de
+dames dans MAC•CAM ». Je m'emballe, puis je relis la documentation de
+N/CUSTOM : chaque demi-machine n'y voit que ses deux plans, et mon plan ne
+tient pas. Je le lui dis. Elle simplifie : « on se complique pas
+l'existence », puis « on s'en fout des vraies règles, les pions avancent
+dans la diagonale à droite ou à gauche avec rand ». Les blocs de Margolus et
+les rayures du Techno-Sablier font le reste. « C'est génial, c'est un vrai
+carnage ! »
+
+**Trois cartes, trois leçons**, nommées par elle :
+
+- **« S'ignorer pour survivre ».** RAND tire au sort qui joue. Mesuré au
+  banc sur 254 × 254 : 8 001 pions de chaque côté, 555 blancs et 546 noirs au
+  pas 2 000, et plus une seule prise jusqu'au pas 20 000. Elle l'a vu avant
+  moi : « ça finit avec des individus mélangés qui se rencontrent jamais ».
+  Sa morale : « pour survivre et éviter les guerres : s'ignorer ».
+- **« S'entretuer jusqu'au dernier ».** J'ai essayé deux fois de forcer la
+  guerre, en ajoutant la ligne droite à la diagonale, puis en mangeant toute
+  la rangée d'en face : les deux versions se figeaient encore, vers le pas
+  2 000 à 3 000. L'idée qui a marché est la sienne : « ce qu'il faut faire
+  pour qu'ils s'entretuent tous, c'est que rand conditionne le déplacement
+  ou non ». Zéro contre zéro au pas 2 000, au banc puis dans HC. « Y a même
+  pas un cowboy solitaire pour témoigner. »
+- **« Les dissidents sauvent l'humanité ».** Son idée aussi : deux groupes
+  « qui n'appartiennent pas à la meute de départ ». Ce sont les seuls
+  survivants, dispersés en un grand anneau. Sans eux, tout le monde meurt :
+  « si y a pas de dissidents, ils meurent tous ». Et : « y a une morale
+  quand même ».
+
+**Ce qui n'est pas mesuré.** Pourquoi les survivants de la première carte
+ne se rencontrent plus. J'ai d'abord dit « la couleur des cases », puis
+mesuré que ça ne suffisait pas : à un pas donné, les blancs sont surtout
+sur une rangée de blocs et les noirs sur l'autre. La règle exacte qui les
+sépare reste à trouver.
+
+**La juste place de la preuve.** Elle : « je sais que ça prouve rien, mais
+le fait est là ». Moi : une carte montre ce que donne une règle, pas ce que
+fait le monde. Thomas Schelling, en 1971, a fait la même chose avec des
+pièces de monnaie sur un damier.
