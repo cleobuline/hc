@@ -103,6 +103,33 @@ ni niée.
 - **Les téléchargements.** `dl.sh` donnait 12 pour HC-0.8.9, sans aucune
   annonce.
 
+## La nuit de l'App Store, du 21 au 22 novembre
+
+**Apple dit oui.** Après le refus du 19 novembre (le mot « HyperCard » dans
+le sous-titre) et un nouveau sous-titre, HC 1.0 passe « Prête pour la
+distribution » au milieu de la nuit, puis s'ouvre dans le Mac App Store.
+« Putain ! c'est génial !!!!! », « champagne !!! », « putain que je suis
+contente, je vais dormir comme un loir, ça valait le coup de veiller ce
+soir ». Et : « je me donnais 6 mois à un an pour finaliser, on a mis
+4 mois », « pour une poignée d'euros ».
+
+**La même nuit, dans MAC•CAM.** Sa règle de Greenberg devient des ronds dans
+l'eau, puis une pluie sur une mare, aux ronds octogonaux (l'idée de PHASE
+est d'elle : « ya phase »), puis un port où la houle passe une digue. La
+pluie part sur YouTube et sur TikTok, avec hc.labynet.fr incrusté. Le
+lendemain : plus de 900 vues sur YouTube, 280 sur TikTok, et le feu de bois
+et les bassines la rejoignent.
+
+**Le grille-pain.** Tout HC a été fait sur un vieux MacBook de 2012 « patché
+qui chauffe comme un grille-pain ». Patché deux fois : « Apple le donnait
+pour 8 Go, j'ai mis 16 ; Apple le donnait pour Catalina, j'ai mis
+Monterey ». Et une troisième fois : « j'ai viré le DD et mis un SSD ». Son clavier : « presque toutes les touches du clavier sont
+effacées, y a un trou dans la barre d'espace », « y a plus de
+aertuiopslmcnb ». Elle lui a mis un support soufflant dessous. « J'aurais de
+la peine s'il meurt. » Et : « je suis contre l'obsolescence programmée » —
+une machine qu'Apple jugeait finie, qui compile pour l'App Store de 2026 :
+« c'est cyberpunk poétique à la Labynet ! »
+
 ## Les projets qui l'attendent
 
 Notés le 3 novembre, à sa demande : « si on n'a pas le temps, on mettra ce
