@@ -33,7 +33,9 @@ own FORTH on the right. It ships in the DMG.*
 
 ## Installing
 
-Download the DMG from the latest [release](https://github.com/cleobuline/hc/releases)
+HC is on the [Mac App Store](https://apps.apple.com/app/hc/id6827783201).
+
+Or download the DMG from the latest [release](https://github.com/cleobuline/hc/releases)
 and copy `HC.app` to `/Applications`. The app is notarised: all you have to
 do is accept the prompt the first time you open it.
 
