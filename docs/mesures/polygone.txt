@@ -295,3 +295,53 @@ posé. Ce n'est pas une extension de plus : l'interface de celle qui existe.
 
 MESURÉ DANS HC (l'application) par l'utilisatrice : « ça marche très bien du
 premier coup ».
+
+LE POLYGONE PAR SCRIPT, ET « click twice at » — 24 novembre
+
+La question est venue d'Esquisse 3D, l'atelier de dessin 3D que
+l'utilisatrice avait écrit autour de 1990 (des points programmés en
+HyperTalk, un XCMD qui triait les facettes avec qsort et les peignait
+d'arrière en avant) : peut-on peindre une facette pleine PAR SCRIPT ?
+
+MESURÉ DANS HYPERCARD (Basilisk II) par l'utilisatrice, le 24 novembre :
+  · choose polygon tool / set filled to true / quatre « click at », dont les
+    deux derniers sur le premier sommet : le polygone ne se ferme pas et ne
+    se remplit pas. À la main, le double-clic le ferme. Un script ne sait
+    pas faire de double-clic : HyperCard ne voit que des clics simples.
+
+Dans HC, avant ce jour, c'était pire : un « click at » de script avec
+l'outil polygone ne posait même pas de sommet — il ne tombait dans aucun
+cas de cocoa_click_at, et rien ne se passait. Un « drag » trace un segment,
+sans remplissage (HCview.m, case TOOL_POLY de cocoa_drag).
+
+LA SPHÈRE DE BOUTONS, MESURÉE DANS HC (l'application) par l'utilisatrice le
+même jour : 200 facettes calculées en HyperTalk, triées par profondeur
+(« sort lines … numeric by word 1 of each »), posées en boutons polygones
+du plus loin au plus proche — 112 ticks la première fois, 86 la seconde,
+dont 26 à 32 pour le calcul. L'algorithme du peintre marche avec les
+boutons, sans rien changer à HC.
+
+DÉCIDÉ PAR L'UTILISATRICE le 24 novembre : « click twice at », pour fermer
+les polygones par script et faire « des tas de dessins complexes et en
+couleur dans HC ». Le mot est celui de LiveCode, vérifié dans sa
+documentation (« click [[with] button <n>] [twice] at <point> », où twice
+« simulate[s] the action of a double-click ») : rien d'inventé, et HyperCard
+refuse la forme, si bien qu'aucune de ses piles ne change.
+
+Ce que fait HC :
+  · « click at p » avec l'outil polygone pose un sommet, comme la souris.
+    NON MESURÉ : ce qu'y fait HyperCard (pose-t-il un sommet invisible
+    jusqu'au double-clic, ou rien ?) ;
+  · « click twice at p » avec l'outil polygone pose le dernier sommet en p,
+    puis termine : « filled » décide si la figure se ferme et se remplit,
+    comme au double-clic de la main ;
+  · avec un autre outil, deux clics de suite ; un hôte qui n'a pas de
+    click_twice_at reçoit deux click_at.
+
+Le noyau est tenu par tests/harnais/clicdeux.c. Le côté Cocoa compile dans
+l'intégration continue (job « interface Cocoa », commit 59848bd).
+
+MESURÉ DANS HC (l'application) par l'utilisatrice, le 24 novembre au soir :
+choose polygon tool, set filled to true, trois « click at » puis un
+« click twice at » — un quadrilatère plein, fermé, « zéro erreur du premier
+coup ».
