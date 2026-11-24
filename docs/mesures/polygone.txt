@@ -345,3 +345,17 @@ MESURÉ DANS HC (l'application) par l'utilisatrice, le 24 novembre au soir :
 choose polygon tool, set filled to true, trois « click at » puis un
 « click twice at » — un quadrilatère plein, fermé, « zéro erreur du premier
 coup ».
+
+LES COULEURS D'UNE FORME PLEINE PEINTE PAR SCRIPT — 24 novembre au soir
+
+MESURÉ DANS HC (l'application) par l'utilisatrice, sur sa pile Mondrian,
+après la correction du cadre (commit a23d756) :
+  · motif blanc : la forme pleine prend « the backColor » (sans « of ») ;
+  · motif noir (« set the pattern to 2 ») : elle prend « the foreColor » —
+    l'encre du motif ;
+  · le CADRE d'une forme pleine tracée par script prend « the backColor » :
+    son script pose « set the backColor to black » une fois, avant la
+    boucle, et « set the foreColor to <couleur> » à chaque rectangle. Les
+    rectangles sortent colorés, cernés de noir.
+NON MESURÉ : ce que fait HyperCard en couleur — il n'en a pas ; et pourquoi
+le cadre suit la backColor plutôt que le noir que paint_shape reçoit.
