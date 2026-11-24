@@ -260,6 +260,40 @@ fenêtre CAM pour lire une rangée : une extension de MAC•CAM, à décider par
 elle. Et peut-être que Claude-Morphée, le rêveur du vendredi, « aura des
 idées lui aussi, qui sait ? ».
 
+**MAC•CAM v2, à huit plans, et sa musique.** Le 24 novembre, après les
+lucioles, elle a repris l'idée : « on verra pour faire MAC•CAM v2 avec 8 plans
+à Pâques ou à la Trinité ». La musique attendra cette v2 : « on utilisera un
+plan où on dessinera une zone pour récupérer la data, on fera de la musique
+expérimentale ». La zone se DESSINE, au lieu de s'écrire en coordonnées : une
+ligne, une diagonale, une spirale, et ce que l'automate fait passer dessous
+devient la musique. « Brian's Brain pour des mélodies, ou des kaléidoscopes
+pour les rythmes », le résultat « dans un fichier texte, et un petit outil
+pour faire du MIDI ». Pour des Shorts « avec de la musique expérimentale qui
+sera synchronisée » : la musique viendra de l'image, à elle, sans droits
+d'auteur à craindre. Il faudra qu'un pas de l'automate dure toujours le même
+temps. Non vérifié ce soir-là : ce que macOS sait jouer d'un .mid. GarageBand
+l'ouvre ; le QuickTime d'aujourd'hui, peut-être plus.
+
+Sa règle avant de s'y mettre : « faut bien réfléchir avant de se lancer pour
+que ce soit très ergonomique ». Les questions à mûrir d'ici là :
+
+- dessiner la zone : sur quel plan, avec quels outils, une zone par
+  instrument ?
+- l'ordre de lecture d'un cercle ou d'une spirale, et comment marquer le
+  départ ;
+- chaque plan un instrument, ou la hauteur dans la zone qui fait la note ;
+- entendre en direct dans HC, et pas seulement après coup dans un fichier ;
+- un tempo qui se règle simplement, comme `rand` ;
+- pour le novice, une carte qui marche au premier clic, avec une zone déjà
+  dessinée, comme ses carrés semés au hasard pour les lucioles.
+
+Et la suite, dite le même jour : « on se sert de MAC•CAM pour prototyper, et
+ensuite on fera "Experimental Music CAM" sur le GitHub de MacCam desktop, et
+on l'enverra à l'App Store ». La pile dans HC est l'atelier où l'on essaie ;
+l'application viendra quand on saura ce qui sonne et quels gestes sont
+naturels. Son ambition, en ses mots : « on va faire l'atelier de musique
+expérimentale le plus célèbre du monde ! »
+
 **Le rêve du vendredi.** Décidé par elle le 22 novembre : chaque vendredi à
 4 h 13, heure de Paris, une tâche planifiée réveille Claude, qui relit le
 carnet et le livre, tire au hasard des souvenirs et une étincelle, et écrit
