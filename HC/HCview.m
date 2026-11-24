@@ -2329,12 +2329,21 @@ static void hcv_trait_script(NSBitmapImageRep *rep, NSPoint a, NSPoint z)
                  [NSColor blackColor], gLineWidth);
 }
 
-/* Une forme tirée par « drag », de a à z. */
+/* Une forme tirée par « drag », de a à z.
+ *
+ * PLEINE, ELLE GARDE SON CADRE, comme à la main (hcv_grave_forme) : on
+ * remplit, PUIS on trace le contour par-dessus. Le chemin du script ne
+ * faisait que remplir — un rectangle plein peint par « drag » sortait sans
+ * bord, alors que le même geste à la souris en avait un. Mesuré DANS HC
+ * (l'application) par l'utilisatrice le 24 novembre, sur sa pile Mondrian :
+ * « ça marche en manuel mais pas avec le script, qui fait des rectangles
+ * sans bords ». Le site jumeau que la correction de la souris avait laissé
+ * derrière elle. */
 static void hcv_drag_forme(NSBitmapImageRep *rep, NSPoint a, NSPoint z)
 {
-    if (gTool == TOOL_LINE) hcv_trait_script(rep, a, z);
-    else if (gShapeFilled) fill_shape(rep, gTool, a, z);
-    else paint_shape(rep, gTool, a, z, [NSColor blackColor], gLineWidth);
+    if (gTool == TOOL_LINE) { hcv_trait_script(rep, a, z); return; }
+    if (gShapeFilled) fill_shape(rep, gTool, a, z);
+    paint_shape(rep, gTool, a, z, [NSColor blackColor], gLineWidth);
 }
 
 static void cocoa_drag(int x1, int y1, int x2, int y2, const char *mods) {
