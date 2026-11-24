@@ -109,6 +109,13 @@ d'une fenêtre CAM rectangulaire, pour filmer MAC•CAM en hauteur. L'original
 la refaisait carrée, mesuré par elle dans HyperCard. Une grille carrée ne
 change pas.
 
+LE 24 NOVEMBRE, une CINQUIÈME PIÈCE, décidée par elle : « click twice at »,
+le double-clic par script, mot de LiveCode, pour fermer un polygone peint
+par script (« ça permettra de faire des tas de dessins complexes et en
+couleur dans HC, c'est un plus ! »). HyperCard ne sait pas le faire, mesuré
+par elle le même jour. Tout est dans docs/mesures/polygone.txt. Elle
+s'annonce dans les notes de version.
+
 ET IL N'Y EN AURA PAS D'AUTRE. Dit par l'utilisatrice le 2 octobre au soir :
 après l'éditeur de polygone et l'alpha des couleurs de bouton (le chantier
 noté dans docs/mesures/polygone.txt), plus aucune extension. La 0.7.8 doit

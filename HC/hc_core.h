@@ -952,6 +952,14 @@ typedef struct {
      * drag         « drag from 10,10 to 90,90 » : trace avec l'outil courant.
      * click_at     « click at 100,120 » : un clic complet, appui et relâchement.
      * type_text    « type "bonjour" » : frappe dans ce qui a le focus.
+     * click_twice_at  « click twice at 100,120 » : un double-clic. Le mot
+     *              est celui de LiveCode (« click [twice] at <point> »), une
+     *              extension annoncée de HC, décidée par l'utilisatrice le
+     *              24 novembre : sans lui, aucun script ne
+     *              peut terminer un polygone, ni dans HC ni dans HyperCard
+     *              (mesuré DANS HYPERCARD par l'utilisatrice le même jour).
+     *              Facultatif : un hôte qui ne le donne pas reçoit deux
+     *              click_at.
      *
      * Ensemble, choose et drag permettent à un script de DESSINER, ce qui
      * était une signature d'HyperCard : les piles s'y fabriquaient des
@@ -960,6 +968,7 @@ typedef struct {
     void (*drag)(int x1, int y1, int x2, int y2, const char *mods);
     void (*click_at)(int x, int y, const char *mods);
     void (*type_text)(const char *text, const char *mods);
+    void (*click_twice_at)(int x, int y, const char *mods);
 
     /* ---- effet de transition ----
      * Appelé juste AVANT un changement de carte, quand un « visual » a été

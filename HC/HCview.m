@@ -2507,10 +2507,49 @@ static void cocoa_drag(int x1, int y1, int x2, int y2, const char *mods) {
 }
 
 
+/* UN SOMMET DE LA LIGNE BRISÉE, posé par la souris OU par un script.
+ *
+ * C'était écrit dans mouseDown seul, et un « click at » de script avec
+ * l'outil polygone ne faisait RIEN : il ne tombait dans aucun des cas de
+ * cocoa_click_at. Une seule fonction pour les deux chemins, pour qu'ils ne
+ * divergent plus — le défaut du crayon, corrigé à la souris et oublié par
+ * script (docs/mesures/crayon.txt), était déjà celui-là. */
+static void hcv_ligne_brisee_sommet(HCView *v, NSPoint p)
+{
+    if (!v) return;
+    if (!gPolyDrawing) {
+        [v beginPaintUndo];     /* une seule fois, avant le premier trait */
+        gPolyDrawing = YES;
+        gPolyCount   = 0;
+        /* mouseMoved: ne part qu'au PREMIER RÉPONDANT, et la fenêtre ne
+         * fait suivre les déplacements que si on le lui demande. Les deux,
+         * donc, sinon l'élastique reste d'une longueur nulle — invisible, ce
+         * qui ressemble à « il n'y a pas de ligne bleue » et non à « les
+         * événements n'arrivent pas ». C'est exactement ce que fait le menu
+         * surgissant, pour la même raison. */
+        [[v window] makeFirstResponder:v];
+        hcv_suivi_souris(1);
+        gPolyVise = p;
+    }
+    /* Le plafond atteint, on TERMINE au lieu d'ignorer le clic : une ligne
+     * qui cesse de répondre sans rien dire est pire qu'une ligne qui
+     * s'achève. */
+    if (gPolyCount >= HCV_POLY_MAX) { hcv_ligne_brisee_termine(); return; }
+
+    gPolyPts[gPolyCount++] = p;
+    gPolyVise = p;
+    [v setNeedsDisplay:YES];
+}
+
 static void cocoa_click_at(int x, int y, const char *mods) {
     (void)mods;
     if (!gView) return;
     NSPoint p = NSMakePoint(x, y);
+
+    /* L'outil polygone : un clic de script pose un sommet, comme la souris.
+     * NON MESURÉ dans HyperCard : ce qu'y fait un « click at » de script avec
+     * cet outil ; on y suit le geste de la main, que le clic simule. */
+    if (gTool == TOOL_POLY) { hcv_ligne_brisee_sommet(gView, p); return; }
 
     Object *hit = part_at(hc_current_card(), p);
     gClickPoint = p;
@@ -2617,6 +2656,22 @@ static void cocoa_click_at(int x, int y, const char *mods) {
         if (hc_object_is_live(hit)) hc_send(hit, "mouseUp");
     }
     [gView setNeedsDisplay:YES];
+}
+
+/* « click twice at » : le double-clic, mot de LiveCode et extension de HC
+ * (décidée par l'utilisatrice le 24 novembre). Avec l'outil polygone, il fait
+ * ce que fait la main : le premier clic pose le dernier sommet, le second
+ * TERMINE — et « filled » décide si la figure se ferme et se remplit
+ * (hcv_ligne_brisee_termine). Ailleurs, deux clics de suite. */
+static void cocoa_click_twice_at(int x, int y, const char *mods) {
+    if (!gView) return;
+    if (gTool == TOOL_POLY) {
+        hcv_ligne_brisee_sommet(gView, NSMakePoint(x, y));
+        hcv_ligne_brisee_termine();
+        return;
+    }
+    cocoa_click_at(x, y, mods);
+    cocoa_click_at(x, y, mods);
 }
 
 /* ═══ Les articles de menu d'HyperCard ══════════════════════════════════
@@ -9359,29 +9414,7 @@ static BOOL      gSansMessageChamp = NO;
      * invisible à l'écran, bien présent dans le bitmap. */
     if (gTool == TOOL_POLY) {
         if ([event clickCount] >= 2) { hcv_ligne_brisee_termine(); return; }
-
-        if (!gPolyDrawing) {
-            [self beginPaintUndo];     /* une seule fois, avant le premier trait */
-            gPolyDrawing = YES;
-            gPolyCount   = 0;
-            /* mouseMoved: ne part qu'au PREMIER RÉPONDANT, et la fenêtre ne
-             * fait suivre les déplacements que si on le lui demande. Les
-             * deux, donc, sinon l'élastique reste d'une longueur nulle —
-             * invisible, ce qui ressemble à « il n'y a pas de ligne bleue »
-             * et non à « les événements n'arrivent pas ». C'est exactement
-             * ce que fait le menu surgissant, pour la même raison. */
-            [[self window] makeFirstResponder:self];
-            hcv_suivi_souris(1);
-            gPolyVise = p;
-        }
-        /* Le plafond atteint, on TERMINE au lieu d'ignorer le clic : une
-         * ligne qui cesse de répondre sans rien dire est pire qu'une ligne
-         * qui s'achève. */
-        if (gPolyCount >= HCV_POLY_MAX) { hcv_ligne_brisee_termine(); return; }
-
-        gPolyPts[gPolyCount++] = p;
-        gPolyVise = p;
-        [self setNeedsDisplay:YES];
+        hcv_ligne_brisee_sommet(self, p);
         return;
     }
 
@@ -10385,6 +10418,7 @@ static void hcv_survol(HCView *v, Object *carte)
     host.choose_tool   = cocoa_choose_tool;
     host.drag          = cocoa_drag;
     host.click_at      = cocoa_click_at;
+    host.click_twice_at = cocoa_click_twice_at;
     host.type_text     = cocoa_type_text;
     host.visual_effect = cocoa_visual_effect;
     host.idle          = cocoa_idle;

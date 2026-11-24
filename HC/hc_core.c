@@ -15594,10 +15594,19 @@ static int v3_cmd_drag(HctContexte *ctx, const HctNoeud *n)
     return 1;
 }
 
+/* « click twice at » : le double-clic, mot de LiveCode et extension de HC
+ * (le 24 novembre, décidée par l'utilisatrice). Sans lui, aucun script ne
+ * termine un polygone : l'outil attend un double-clic, et deux « click at »
+ * ne sont que deux clics simples — mesuré DANS HYPERCARD par l'utilisatrice
+ * le même jour, où le polygone ne se ferme pas non plus. Un hôte qui n'a pas
+ * de click_twice_at reçoit deux click_at, ce qui est encore le geste le plus
+ * proche. */
 static int v3_cmd_click(HctContexte *ctx, const HctNoeud *n)
 {
-    int iwith = v3_indice_motcle(n, "with", 0);
-    int deb   = v3_est_motcle(n, 0, "at") ? 1 : 0;
+    int deux  = v3_est_motcle(n, 0, "twice");
+    int iat   = deux ? 1 : 0;
+    int iwith = v3_indice_motcle(n, "with", iat);
+    int deb   = v3_est_motcle(n, iat, "at") ? iat + 1 : iat;
 
     char pt[128], mods[128];
     v3_point(ctx, n, deb, iwith >= 0 ? iwith : n->nfils, pt, sizeof pt);
@@ -15612,9 +15621,14 @@ static int v3_cmd_click(HctContexte *ctx, const HctNoeud *n)
 
     g_visual_dirty = 1;
     { const char *t = host_global("tool");
-      emit(HC_TRACE, "   ✎ click at %d,%d (%s)", x, y, t ? t : "?"); }
-    if (g_host && g_host->click_at) g_host->click_at(x, y, mods);
-    else emit(HC_ERR, "   !! click : l'hôte ne gère pas la souris");
+      emit(HC_TRACE, "   ✎ click %sat %d,%d (%s)", deux ? "twice " : "",
+           x, y, t ? t : "?"); }
+    if (deux && g_host && g_host->click_twice_at)
+        g_host->click_twice_at(x, y, mods);
+    else if (g_host && g_host->click_at) {
+        g_host->click_at(x, y, mods);
+        if (deux) g_host->click_at(x, y, mods);
+    } else emit(HC_ERR, "   !! click : l'hôte ne gère pas la souris");
     set_result("");
     return 1;
 }

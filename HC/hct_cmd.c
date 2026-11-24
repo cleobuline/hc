@@ -47,7 +47,11 @@ static const HctCommande TABLE[] = {
     { "ask file",   "e [with e]" },
     { "beep",       "[e]" },
     { "choose",     "W [tool]" },
-    { "click",      "at * [with *]" },
+    /* « [twice] » : le double-clic de LiveCode, « click [twice] at
+     * <point> » — une extension de HC, décidée par l'utilisatrice le 24
+     * novembre pour fermer un polygone par script. HyperCard refuse le mot :
+     * aucune de ses piles ne l'emploie, aucune ne change. */
+    { "click",      "[twice] at * [with *]" },
     { "close",      "[file] *" },
     { "commandkeydown", "e" },
     { "controlkey", "e" },
