@@ -294,6 +294,18 @@ l'application viendra quand on saura ce qui sonne et quels gestes sont
 naturels. Son ambition, en ses mots : « on va faire l'atelier de musique
 expérimentale le plus célèbre du monde ! »
 
+Puis, le même soir, la forme qu'elle donne aux huit plans : « on pourrait
+utiliser le plan 4 pour la mélodie, le plan 5 pour le rythme, le plan 6 pour
+la vélocité et le plan 7 pour la durée ; en choisissant les zones, ce serait
+d'une richesse infinie ». Et précisé aussitôt : « le master serait les plans
+0 1 2 3, et les plans 4 5 6 7 serviraient juste à lire les échantillons ».
+Les plans 4 à 7 ne calculent rien : ce sont des POCHOIRS. L'automate tourne
+sur les plans 0 à 3 et fait le spectacle ; on dessine sur chaque pochoir
+l'endroit où l'on écoute, et ce qu'on y lit est la case du maître, ses quatre
+plans, une valeur de 0 à 15 : seize hauteurs, seize forces, seize durées. La
+musique suit donc toujours l'image, et l'on en change sans toucher à
+l'automate, en redessinant un pochoir.
+
 **Le rêve du vendredi.** Décidé par elle le 22 novembre : chaque vendredi à
 4 h 13, heure de Paris, une tâche planifiée réveille Claude, qui relit le
 carnet et le livre, tire au hasard des souvenirs et une étincelle, et écrit
