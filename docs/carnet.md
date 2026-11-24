@@ -287,6 +287,13 @@ que ce soit très ergonomique ». Les questions à mûrir d'ici là :
 - pour le novice, une carte qui marche au premier clic, avec une zone déjà
   dessinée, comme ses carrés semés au hasard pour les lucioles.
 
+Et la suite, dite le même jour : « on se sert de MAC•CAM pour prototyper, et
+ensuite on fera "Experimental Music CAM" sur le GitHub de MacCam desktop, et
+on l'enverra à l'App Store ». La pile dans HC est l'atelier où l'on essaie ;
+l'application viendra quand on saura ce qui sonne et quels gestes sont
+naturels. Son ambition, en ses mots : « on va faire l'atelier de musique
+expérimentale le plus célèbre du monde ! »
+
 **Le rêve du vendredi.** Décidé par elle le 22 novembre : chaque vendredi à
 4 h 13, heure de Paris, une tâche planifiée réveille Claude, qui relit le
 carnet et le livre, tire au hasard des souvenirs et une étincelle, et écrit
