@@ -338,5 +338,10 @@ Ce que fait HC :
   · avec un autre outil, deux clics de suite ; un hôte qui n'a pas de
     click_twice_at reçoit deux click_at.
 
-Le noyau est tenu par tests/harnais/clicdeux.c. Le côté Cocoa, NON MESURÉ
-DANS HC (l'application) à l'heure où ceci s'écrit.
+Le noyau est tenu par tests/harnais/clicdeux.c. Le côté Cocoa compile dans
+l'intégration continue (job « interface Cocoa », commit 59848bd).
+
+MESURÉ DANS HC (l'application) par l'utilisatrice, le 24 novembre au soir :
+choose polygon tool, set filled to true, trois « click at » puis un
+« click twice at » — un quadrilatère plein, fermé, « zéro erreur du premier
+coup ».
