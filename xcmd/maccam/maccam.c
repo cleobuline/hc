@@ -58,6 +58,7 @@ typedef struct {
     int       masque;           /* « planes » : 0x80 le plan 0 … 0x10 le plan 3 */
     unsigned char couleurs[16][3];  /* « colors » : par combinaison de plans */
     char      nom[256];         /* pour se poser ses propriétés de fenêtre */
+    int       zone[4];          /* « zone » : x1,y1,x2,y2 en cases ; vide au départ */
 } Fenetre;
 
 enum { FENETRES = 8 };
@@ -216,7 +217,7 @@ static int message(Fenetre *f, const char *m)
 
 /* ---- les propriétés : setProp, getProp ---- */
 
-enum { PROPRIETES = 35 };
+enum { PROPRIETES = 37 };
 
 static const char *const NOMS[PROPRIETES] = {
     "hilite", "name", "visible", "height", "width", "rect",
@@ -225,7 +226,8 @@ static const char *const NOMS[PROPRIETES] = {
     "pln1", "pln0", "palette", "PictResource", "major", "minor",
     "alternate", "phaseA", "phaseB",
     "planes", "colors",                         /* les ajouts : voir pose() */
-    "rand", "count", "custom"
+    "rand", "count", "custom",
+    "zone", "cells"                             /* l'ajout du 24 novembre */
 };
 
 static int rang(const char *prop)
@@ -443,6 +445,38 @@ static int pose(Fenetre *f, const char *prop, const char *valeur)
         cam_voisins(c, v.n, v.dx, v.dy, v.plan);
         return 1;
     }
+    case 35: {
+        /* « zone », l'ajout du 24 novembre, décidé par l'utilisatrice pour
+         * échantillonner la machine : le rectangle que « cells » lira, en
+         * CASES de la grille — « 0,120,16,121 », une ligne de seize cases.
+         * Quatre nombres, ou la zone ne change pas, comme ailleurs une
+         * valeur incomprise. */
+        int v[4], k = 0;
+        const char *q = valeur;
+        while (k < 4) {
+            while (*q == ' ') q++;
+            int signe = 1, chiffres = 0, x = 0;
+            if (*q == '-') { signe = -1; q++; }
+            while (*q >= '0' && *q <= '9' && x < 100000) {
+                x = x * 10 + (*q - '0');
+                q++;
+                chiffres++;
+            }
+            if (!chiffres) break;
+            v[k++] = signe * x;
+            while (*q == ' ') q++;
+            if (k < 4) {
+                if (*q != ',') break;
+                q++;
+            }
+        }
+        while (*q == ' ') q++;
+        if (k == 4 && !*q) memcpy(f->zone, v, sizeof v);
+        return 1;
+    }
+    case 36:
+        /* « cells » se lit, il ne se pose pas — comme « count ». */
+        return 1;
     default:
         if (i >= 6 && i <= 13) {                /* image0 à image7 */
             image(f, i - 6, valeur);
@@ -533,6 +567,24 @@ static char *lit(Fenetre *f, const char *prop)
                              f->cam.vdx[i], f->cam.vdy[i], f->cam.vplan[i]);
             if (w > 0) k += (size_t)w;
         }
+        return t;
+    }
+    case 35: {                                  /* « zone », telle que posée */
+        static char t[64];
+        snprintf(t, sizeof t, "%d,%d,%d,%d",
+                 f->zone[0], f->zone[1], f->zone[2], f->zone[3]);
+        return t;
+    }
+    case 36: {
+        /* « cells », l'ajout du 24 novembre : les cases de la zone, une
+         * ligne par rangée, un chiffre de 0 à F par case (cam_cellules). Vide
+         * sans zone, ou fenêtre fermée. Plafonné à 64 Ko : au-delà, les
+         * rangées suivantes ne sont pas rendues. */
+        static char t[65536];
+        t[0] = '\0';
+        if (f->ouverte)
+            cam_cellules(&f->cam, f->zone[0], f->zone[1], f->zone[2],
+                         f->zone[3], t, sizeof t);
         return t;
     }
     default:
