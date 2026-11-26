@@ -85,7 +85,7 @@
       [ERR]    !! ne sait pas lire la ligne du module : put 1 into
          ⚙ XCMD mauvaise
    passe
-      [ERR]    !! personne ne répond à « passe »
+      [ERR]    !! Can't understand "passe".
    put compte(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16)
       = 16|1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16
    put compte(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17)
@@ -142,7 +142,7 @@
 == 8. retirer un module ==
    hc_module_retire(bonjour) : 1
    bonjour "Patricia"
-      [ERR]    !! personne ne répond à « bonjour "Patricia" »
+      [ERR]    !! Can't understand "bonjour".
    la pile garde 1 module(s)
 
 == 9. les rappels de HyperCard ==
@@ -214,7 +214,7 @@
    compile "1 2 3"
       = [3 2 1 ] 0  0
    compile ": R EAST >PLN0 ; MAKE-TABLE R ZORGLUB"
-      [ERR]    !! personne ne répond à « INTERPRET_ERR "Can't understand ", 8 »
+      [ERR]    !! Can't understand "INTERPRET_ERR".
       = [] 4096 0101010101010101 0
    -- avec le gestionnaire que portent les piles de MAC•CAM
    compile "5 ( un commentaire ) : R CENTER ZORGLUB >PLN0 ;"
@@ -372,7 +372,7 @@
       = false
 
 == 12. MACCAM : la fenêtre CAM de MAC•CAM ==
-   ajoute maccam.wasm (23777 octets) : accepté
+   ajoute maccam.wasm (25454 octets) : accepté
    get maccam("10,40,22,52", "CAM", "True", 17, "True", "True")
       hôte : ouvre 11 « CAM » 10,40,22,52, visible 1, style 17, flottante 1
       hôte : image de 11, 12 × 12 à l'échelle 1 ; plans 1 à 3 : 0 point(s) ; couleur 0x80 = 255,255,255
@@ -743,6 +743,27 @@
          ##########
    put the count of window "CAM"
       = 100,0,0,0
+   -- zone et cells : échantillonner la machine, l'ajout de HC
+   put the zone of window "CAM"
+      = 0,0,0,0
+   put the cells of window "CAM"
+      = 
+   set the zone of window "CAM" to "0,0,4,2"
+   put the zone of window "CAM"
+      = 0,0,4,2
+   put the cells of window "CAM"
+      = 8888
+8888
+   set the zone of window "CAM" to "1,2,3"
+   set the zone of window "CAM" to "zut"
+   put the zone of window "CAM"
+      = 0,0,4,2
+   set the zone of window "CAM" to "-5,-5,3,1"
+   put the cells of window "CAM"
+      = 888
+   set the cells of window "CAM" to "FFFF"
+   put the cells of window "CAM"
+      = 888
    send erasea to window "CAM"
       hôte : image de 11, 12 × 12 à l'échelle 2 ; plans 1 à 3 : 0 point(s) ; couleur 0x80 = 255,255,255
          ..........
@@ -757,6 +778,8 @@
          ..........
    put the count of window "CAM"
       = 0,0,0,0
+   put the cells of window "CAM"
+      = 000
    -- custom : les voisins sur mesure, l'ajout de HC
    put the custom of window "CAM"
       = 

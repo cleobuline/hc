@@ -87,6 +87,36 @@ void cam_compte(const Cam *c, unsigned long n[4])
     }
 }
 
+/* ---- les cellules d'une zone ---- */
+
+size_t cam_cellules(const Cam *c, int x1, int y1, int x2, int y2,
+                    char *s, size_t cap)
+{
+    static const char HEX[] = "0123456789ABCDEF";
+    size_t n = 0;
+    if (!s || cap == 0) return 0;
+    s[0] = '\0';
+    if (!c->pix) return 0;
+    const int L = c->w - 2, H = c->h - 2;
+    if (x1 < 0) x1 = 0;
+    if (y1 < 0) y1 = 0;
+    if (x2 > L) x2 = L;
+    if (y2 > H) y2 = H;
+    for (int y = y1; y < y2; y++) {
+        /* La place d'une rangée ENTIÈRE et de son retour, ou rien : une
+         * rangée coupée au milieu se lirait comme une rangée plus courte. */
+        if (n + (size_t)(x2 - x1) + 2 > cap) break;
+        if (y > y1) s[n++] = '\n';
+        const u8 *ligne = c->pix + (size_t)(y + 1) * (size_t)c->w + 1;
+        for (int x = x1; x < x2; x++) {
+            u8 v = ligne[x];
+            s[n++] = HEX[P0(v) << 3 | P1(v) << 2 | P2(v) << 1 | P3(v)];
+        }
+    }
+    s[n] = '\0';
+    return n;
+}
+
 void cam_ferme(Cam *c)
 {
     free(c->pix);

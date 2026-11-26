@@ -20,6 +20,8 @@
 #ifndef MACCAM_COEUR_H
 #define MACCAM_COEUR_H
 
+#include <stddef.h>
+
 #define CAM_TABLE 4096
 /* N/CUSTOM, de HC (9 novembre) : douze voisins et RAND, 13 bits d'index. */
 #define CAM_TABLE_MAX 8192
@@ -95,6 +97,18 @@ void cam_hasard(Cam *c, unsigned long ppm);
  * colonnes opposées, et ses cellules compteraient deux fois. Le compte ne
  * se fait que quand on le demande ; le pas n'en sait rien. */
 void cam_compte(const Cam *c, unsigned long n[4]);
+
+/* LES CELLULES D'UNE ZONE, l'ajout de HC décidé par l'utilisatrice le 24
+ * novembre, pour échantillonner MAC•CAM et en tirer de la musique (CAMusik,
+ * docs/carnet.md) : le rectangle x1,y1 — x2,y2 de la grille, en CASES du
+ * tore, 0,0 en haut à gauche, x2 et y2 exclus comme dans un rect
+ * d'HyperCard, ramené aux bords. Une ligne de texte par rangée, un chiffre
+ * hexadécimal par case : le plan 0 vaut 8, le plan 1 4, le plan 2 2, le
+ * plan 3 1 — l'ordre des motifs de « colors », « 1000 » étant le plan 0.
+ * Rend la longueur écrite ; une rangée qui ne tient plus dans `cap` n'est
+ * pas écrite du tout. */
+size_t cam_cellules(const Cam *c, int x1, int y1, int x2, int y2,
+                    char *s, size_t cap);
 
 /* N/CUSTOM : les n voisins du voisinage 11, de 0 à 12 ; au-delà, les douze
  * premiers. Sans voisin, un pas du voisinage 11 ne fait rien, comme un

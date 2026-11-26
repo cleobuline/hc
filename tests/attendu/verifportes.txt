@@ -4,7 +4,7 @@
       !! le gestionnaire « casse » est mal formé : « end » manquant (ligne 1 de button "B")
 
 ── PORTE 2 : message sans gestionnaire
-      !! personne ne répond à « dessineLeChat 3 »
+      !! Can't understand "dessineLeChat".
 
 ── PORTE 2 bis : commande que la v3 ne sait pas faire
       !! objet introuvable : put "x" into field "absentDeToutesLesCartes"

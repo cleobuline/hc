@@ -235,6 +235,14 @@ typedef struct {
      * le dire. Les fonctions intégrées (length, offset…) ne sont pas
      * concernées : elles ne passent pas par l'hôte. */
     int arg_max;
+
+    /* LE DÉBOGUEUR : appelé AVANT chaque instruction d'un bloc, avec son
+     * nœud, qui porte sa ligne. L'hôte y décide s'il faut s'arrêter — un
+     * point d'arrêt, un pas à pas — et peut y rester aussi longtemps que
+     * l'utilisatrice regarde. Pour abandonner, il lève sa propre
+     * interruption : l'exécuteur la lit juste après, par hct_ctx_interrompu.
+     * NULL = aucun débogueur, rien ne change. */
+    void (*avant_ligne)(void *d, const HctNoeud *n);
 } HctHote;
 
  

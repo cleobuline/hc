@@ -733,8 +733,26 @@ int main(int argc, char **argv)
     puts("   -- fill8, erasea, toscrap, PictResource");
     fais("send fill8 to window \"CAM\"");
     fais("put the count of window \"CAM\"");     /* le plan 0 plein */
+    /* « zone » et « cells », l'ajout de HC décidé par l'utilisatrice le 24
+     * novembre, pour échantillonner la machine (CAMusik) : le rectangle
+     * posé, en cases, puis ses cases, un chiffre de 0 à F par case — le
+     * plan 0 vaut 8. Le plan 0 est plein ici, d'où des 8. */
+    puts("   -- zone et cells : échantillonner la machine, l'ajout de HC");
+    fais("put the zone of window \"CAM\"");
+    fais("put the cells of window \"CAM\"");              /* sans zone : vide */
+    fais("set the zone of window \"CAM\" to \"0,0,4,2\"");
+    fais("put the zone of window \"CAM\"");
+    fais("put the cells of window \"CAM\"");
+    fais("set the zone of window \"CAM\" to \"1,2,3\"");   /* refusé : inchangé */
+    fais("set the zone of window \"CAM\" to \"zut\"");
+    fais("put the zone of window \"CAM\"");
+    fais("set the zone of window \"CAM\" to \"-5,-5,3,1\""); /* ramené aux bords */
+    fais("put the cells of window \"CAM\"");
+    fais("set the cells of window \"CAM\" to \"FFFF\"");   /* se lit seulement */
+    fais("put the cells of window \"CAM\"");
     fais("send erasea to window \"CAM\"");
     fais("put the count of window \"CAM\"");
+    fais("put the cells of window \"CAM\"");             /* tout éteint */
     /* « custom », l'ajout de HC décidé par l'utilisatrice le 9 novembre :
      * le texte FORTH de la carte, dont la fenêtre lit la dernière
      * déclaration N/CUSTOM pour son voisinage 11. La machine est éprouvée

@@ -1,7 +1,7 @@
 [v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
-   [ERR]    !! personne ne répond à « t2 »
+   [ERR]    !! Can't understand "t2".
    [Can't understand]
-   [ERR]    !! personne ne répond à « t3 »
+   [ERR]    !! Can't understand "t3".
    [Can't understand]
    t3 de B2
    []
@@ -9,7 +9,7 @@
    x=[5]
    x=[7]
    card button "B"
-   [ERR]    !! personne ne répond à « put »
+   [ERR]    !! Can't understand "put".
    put seul [Can't understand]
-   [ERR]    !! personne ne répond à « t2 »
+   [ERR]    !! Can't understand "t2".
    [Can't understand]
