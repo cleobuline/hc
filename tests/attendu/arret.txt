@@ -19,7 +19,7 @@
    — convert sans « to »
      convert "hier"
    avant
-   [ERR]    !! personne ne répond à « convert "hier" »
+   [ERR]    !! Can't understand "convert".
    APRÈS
    — date incomprise
      convert "pas une date" to seconds

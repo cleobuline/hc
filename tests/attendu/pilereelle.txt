@@ -194,7 +194,7 @@ chose, puis l'operation ». ZERO contre-exemple.
      6.25
      le gestionnaire est alle au bout
 -- la ligne ENTIERE (« personne ne repond » est la BONNE reponse)
-     [ERREUR]    !! personne ne répond à « updateCalendar bg field "Year" + 1,"scroll left" »
+     [ERREUR]    !! Can't understand "updateCalendar".
      le gestionnaire est alle au bout
 
 --- 6b. LE RANG GARDE SON DROIT A L'ARITHMETIQUE ---

@@ -14,7 +14,7 @@
 >>> on clearScreen tl (choose tl tool)
 → message "mouseUp" à button "GoBtn"
    · traité par button "GoBtn"
-      !! personne ne répond à « clearScreen "browse" »
+      !! Can't understand "clearScreen".
    — retours de la v3 vers l'ancien interpréteur —
       commande <message>                       1
    — ce que l'ancien interprète exécute encore —

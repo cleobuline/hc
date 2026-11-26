@@ -13139,7 +13139,11 @@ static int v3_cmd_send(HctContexte *ctx, const HctNoeud *n)
         msg[0]) {
         const char *ligne = skip_spaces(msgline);
         if (!v3_verbe_connu(msg) || !v3_do_ligne(ligne)) {
-            emit(HC_ERR, "   !! personne ne répond à « %s »", msg);
+            /* Le texte d'HyperCard, au signe près : « Can't understand
+             * "zorglub". », point final compris — mesuré DANS HYPERCARD
+             * (Basilisk II) par l'utilisatrice le 26 novembre. Il était en
+             * français et passait tel quel au dialogue. */
+            emit(HC_ERR, "   !! Can't understand \"%s\".", msg);
             set_result("Can't understand");
         }
     }
@@ -17948,7 +17952,16 @@ static int v3_commande_corps(void *d, const HctNoeud *n, HctContexte *ctx)
      * différemment aussi. */
     v1_compte("v1 refusée", "recours v3");
     if (n->genre == HCTN_MESSAGE) {
-        emit(HC_ERR, "   !! personne ne répond à « %s »", ligne);
+        /* Le même texte que plus haut, et le MESSAGE seul, sans ses
+         * arguments : la ligne entière donnait des guillemets emboîtés,
+         * « Can't understand "convert "hier"". », illisibles. NON MESURÉ :
+         * ce qu'HyperCard nomme quand il y a des arguments (« zorglub 3 »). */
+        {
+            const char *nom = skip_spaces(ligne);
+            int k = 0;
+            while (nom[k] && nom[k] != ' ' && nom[k] != '\t' && k < 255) k++;
+            emit(HC_ERR, "   !! Can't understand \"%.*s\".", k, nom);
+        }
         set_result("Can't understand");
     }
     /* LE VERBE ÉTAIT-IL COMPRIS, OU L'OBJET MANQUAIT-IL ?

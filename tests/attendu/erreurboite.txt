@@ -13,8 +13,8 @@
           ligne fautive : 0
       [dialogues ouverts : 1]
    verbe que personne ne sert
-      [console]    !! personne ne répond à « zorglub »
-      >>> DIALOGUE :    !! personne ne répond à « zorglub »
+      [console]    !! Can't understand "zorglub".
+      >>> DIALOGUE :    !! Can't understand "zorglub".
           objet fautif : aucun
           ligne fautive : 0
       [dialogues ouverts : 1]

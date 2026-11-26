@@ -43,7 +43,7 @@
    OK    start using stack "z"                         
    OK    stop using stack "z"                          
    OK    print card                                    
-   MANQ  save this stack                                    !! personne ne répond à « save this stack »
+   MANQ  save this stack                                    !! Can't understand "save".
    OK    send "t" to me                                
    MANQ  dial "555"                                         !! ne sait pas faire : dial "555"
    MANQ  export paint to file "z"                           !! ne sait pas faire : export paint to file "z"

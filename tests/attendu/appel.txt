@@ -5,7 +5,7 @@
 [v3]    v1 refusée recours v3                   1
 → message "mouseUp" à button "B1"
    · traité par button "B1"
-      !! personne ne répond à « drawChart »
+      !! Can't understand "drawChart".
    — retours de la v3 vers l'ancien interpréteur —
       commande <message>                       1
    — ce que l'ancien interprète exécute encore —

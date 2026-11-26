@@ -49,7 +49,7 @@
       fini sans arrêt
 
 == 8. l'erreur fige les variables, pour le bouton Debug ==
-      [ERR]    !! personne ne répond à « zorglub »
+      [ERR]    !! Can't understand "zorglub".
          locale  x = [7]
          locale  y = [ici]
          globale a = [7]

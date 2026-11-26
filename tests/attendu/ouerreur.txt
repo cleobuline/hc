@@ -39,7 +39,7 @@
       -> objet button "B", ligne 2 |   !! objet introuvable (v3, ligne 2 de button "B".mouseUp)
          ligne 2 :  put field "Absent" into x
 == 14 message inconnu, ligne 3
-      -> objet button "B", ligne 3 |   !! personne ne répond à « zorglub 3 »
+      -> objet button "B", ligne 3 |   !! Can't understand "zorglub".
          ligne 3 :  zorglub 3
 == 15 end manquant (cadre fautif)
       -> objet button "B", ligne 1 |   !! le gestionnaire « mouseUp » est mal formé : « end » manquant (ligne 1 de button "B")
