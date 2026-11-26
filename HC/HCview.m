@@ -5193,12 +5193,23 @@ static void hcv_editions_oublient(Object *mort)
 
 @interface HCScriptView : NSTextView
 @property (nonatomic) NSInteger ligneEncadree;   /* 0 : aucune */
+/* La ligne que le DÉBOGUEUR va exécuter : en vert, avec une flèche dans la
+ * marge, pour ne pas la confondre avec le cadre rouge d'une erreur. Signalé
+ * à l'usage, au premier essai du débogueur, le 26 novembre : « manque un
+ * peu le feedback de la ligne qui s'exécute ». 0 : aucune. */
+@property (nonatomic) NSInteger ligneCourante;
 @end
 
 @implementation HCScriptView
 
 - (void)setLigneEncadree:(NSInteger)l {
     _ligneEncadree = l;
+    [self setNeedsDisplay:YES];
+    [[[self enclosingScrollView] verticalRulerView] setNeedsDisplay:YES];
+}
+
+- (void)setLigneCourante:(NSInteger)l {
+    _ligneCourante = l;
     [self setNeedsDisplay:YES];
     [[[self enclosingScrollView] verticalRulerView] setNeedsDisplay:YES];
 }
@@ -5239,6 +5250,15 @@ static void hcv_editions_oublient(Object *mort)
 /* Le cadre SOUS le texte : il ne masque pas un caractère. */
 - (void)drawViewBackgroundInRect:(NSRect)rect {
     [super drawViewBackgroundInRect:rect];
+    if (self.ligneCourante > 0) {
+        NSRect c = [self rectDeLigne:self.ligneCourante];
+        if (!NSIsEmptyRect(c)) {
+            c.origin.x = 0;
+            c.size.width = [self bounds].size.width;
+            [[[NSColor systemGreenColor] colorWithAlphaComponent:0.22] setFill];
+            NSRectFillUsingOperation(c, NSCompositingOperationSourceOver);
+        }
+    }
     if (self.ligneEncadree <= 0) return;
     NSRect box = [self rectDeLigne:self.ligneEncadree];
     if (NSIsEmptyRect(box)) return;
@@ -5446,6 +5466,18 @@ static char kHcvMenuGestionnaires;
         CGFloat y = MIN(haut.y, bas.y) + (fabs(bas.y - haut.y) - t.height) / 2;
         [n drawAtPoint:NSMakePoint([self ruleThickness] - 5 - t.width, y)
         withAttributes:at];
+        /* La flèche de la ligne que le débogueur va exécuter. */
+        if ([tv isKindOfClass:[HCScriptView class]] &&
+            ((HCScriptView *)tv).ligneCourante == ligne) {
+            CGFloat h = 10, yc = y + t.height / 2;
+            NSBezierPath *fl = [NSBezierPath bezierPath];
+            [fl moveToPoint:NSMakePoint(2, yc - h / 2)];
+            [fl lineToPoint:NSMakePoint(12, yc)];
+            [fl lineToPoint:NSMakePoint(2, yc + h / 2)];
+            [fl closePath];
+            [[NSColor systemGreenColor] setFill];
+            [fl fill];
+        }
         /* La pastille d'un point d'arrêt, à gauche du numéro. */
         if (cible && hc_debug_point(cible, (int)ligne)) {
             CGFloat d = 8;
@@ -5567,6 +5599,18 @@ static void hcv_debug_une_var(void *u, const char *nom, const char *val, int glo
     hc_debug_variables(hcv_debug_une_var, (__bridge void *)t);
     [self.vars setString:t];
 
+    /* À droite de la fenêtre du script, pour ne pas cacher la ligne. */
+    for (HCEditionScript *x in gEditions)
+        if (x.cible == o) {
+            NSRect f = [x.panneau frame];
+            [self.panneau setFrameTopLeftPoint:NSMakePoint(NSMaxX(f) + 8, NSMaxY(f))];
+            /* Ramené dans l'écran si la fenêtre du script est déjà à droite. */
+            NSScreen *ecran = [x.panneau screen] ?: [NSScreen mainScreen];
+            [self.panneau setFrame:[self.panneau constrainFrameRect:[self.panneau frame]
+                                                           toScreen:ecran]
+                           display:NO];
+            break;
+        }
     [self.panneau makeKeyAndOrderFront:nil];
     NSModalResponse r = [NSApp runModalForWindow:self.panneau];
     [self.panneau orderOut:nil];
@@ -5586,23 +5630,35 @@ static int cocoa_debug_pause(Object *o, const char *message, int ligne)
     for (HCEditionScript *x in gEditions)
         if (x.cible == o) { ed = x; break; }
     if (!ed) {
-        [gView editScriptOf:o atLine:ligne];
+        [gView editScriptOf:o atLine:0];
         for (HCEditionScript *x in gEditions)
             if (x.cible == o) ed = x;
-    } else {
-        [ed.panneau orderFront:nil];
-        hcv_encadre_ligne(ed.vue, ligne);
     }
-    /* La carte telle que le script l'a laissée jusqu'ici. */
+    /* Une seule ligne courante à la fois : quand le pas change de script,
+     * l'ancienne fenêtre perd sa flèche. */
+    for (HCEditionScript *x in gEditions)
+        if (x != ed && [x.vue isKindOfClass:[HCScriptView class]])
+            ((HCScriptView *)x.vue).ligneCourante = 0;
+    if ([ed.vue isKindOfClass:[HCScriptView class]]) {
+        HCScriptView *sv = (HCScriptView *)ed.vue;
+        sv.ligneCourante = ligne;
+        NSRange r = hcv_plage_de_ligne([sv string], ligne);
+        if (r.location != NSNotFound) [sv scrollRangeToVisible:r];
+    }
+    [ed.panneau orderFront:nil];
+    /* Tout de suite, et non au prochain tour de boucle : la boucle modale qui
+     * suit dessinerait bien, mais la flèche doit être là quand le panneau
+     * s'ouvre. La carte aussi, telle que le script l'a laissée. */
+    [ed.panneau display];
     [gView display];
 
     if (!gDebogueur) gDebogueur = [[HCDebogueur alloc] init];
     int geste = [gDebogueur attendSur:o message:message ligne:ligne];
 
-    /* Le cadre suit le pas ; quand on repart librement, il s'efface. */
+    /* La flèche suit le pas ; quand on repart librement, elle s'efface. */
     if ((geste == HC_DEBUG_CONTINUE || geste == HC_DEBUG_ABANDON) &&
         [ed.vue isKindOfClass:[HCScriptView class]])
-        ((HCScriptView *)ed.vue).ligneEncadree = 0;
+        ((HCScriptView *)ed.vue).ligneCourante = 0;
     return geste;
 }
 
