@@ -1988,22 +1988,25 @@ static void cocoa_line(HcLineKind kind, int depth, const char *text) {
  * faire. La ligne peut valoir 0 — l'éditeur s'ouvre alors en haut, comme
  * avant.
  *
- * PAS DE TROISIÈME BOUTON « Debug », ET C'EST UNE DÉCISION, PAS UN TROU.
+ * LE TROISIÈME BOUTON, « Debug », ROUVERT LE 26 NOVEMBRE.
  *
- * HyperCard en a un : il ouvre le même éditeur en ENCADRANT la ligne fautive
- * d'un rectangle, l'indicateur de ligne courante de son débogueur. Écarté à
- * l'usage, le 27/09/2026 : « oublie le bouton debug ça ferait double emploi ».
- * Il ne restait entre les deux boutons que la différence entre une sélection
- * et un cadre ; le 30/09, « la ligne fautive doit être correctement encadrée »
- * a tranché dans l'autre sens pour le CADRE, pas pour le bouton : c'est
- * « Script » qui encadre désormais, et le troisième bouton n'a toujours rien
- * de plus à offrir.
+ * Écarté le 27/09/2026 : « oublie le bouton debug ça ferait double emploi »
+ * — il n'aurait fait qu'encadrer la ligne, comme « Script ». Le commentaire
+ * d'alors disait que la question se rouvrirait le jour où le débogueur
+ * existerait. Il existe, et l'utilisatrice a rouvert la question avec une
+ * capture DANS HYPERCARD (Basilisk II) : Debug / Script / Cancel, et après
+ * « Debug », le Variable Watcher montre encore les variables du gestionnaire
+ * arrêté, Step et Go grisés, Abort actif. Voir hc_debug_erreur_variables.
  *
- * C'est écrit ici parce qu'un manque et un choix se ressemblent dans le code,
- * et que ce dépôt a déjà payé l'inverse — des portes annoncées dans un
- * commentaire et jamais percées. Celle-ci est fermée exprès. Le jour où le
- * débogueur existera vraiment — pas à pas, reprise, espion de variables —, le
- * bouton aura de quoi se distinguer, et la question se rouvrira d'elle-même. */
+ * « Debug » montre donc ce que « Script » ne montre pas : les valeurs au
+ * moment de la faute. Et « OK » devient « Cancel », le mot d'HyperCard.
+ *
+ * NON MESURÉ : l'ordre des trois boutons dans le dialogue d'HyperCard, et
+ * lequel est le bouton par défaut. Ici Cancel est le premier, celui de
+ * Retour, comme l'ancien OK. */
+static int hcv_debogueur_montre(Object *o, const char *message, int ligne,
+                                BOOL erreur);
+
 static void cocoa_erreur(const char *texte, Object *objet, int ligne) {
     if (!texte || !*texte) return;
 
@@ -2061,12 +2064,18 @@ static void cocoa_erreur(const char *texte, Object *objet, int ligne) {
     [a setMessageText:titre];
     if ([detail length]) [a setInformativeText:detail];
 
-    [a addButtonWithTitle:@"OK"];
-    if (objet && gView) [a addButtonWithTitle:@"Script"];
+    [a addButtonWithTitle:@"Cancel"];
+    if (objet && gView) {
+        [a addButtonWithTitle:@"Script"];
+        /* Debug n'a rien à montrer sans ligne : une faute hors gestionnaire. */
+        if (ligne > 0) [a addButtonWithTitle:@"Debug"];
+    }
 
     NSModalResponse rep = [a runModal];
     if (objet && gView && rep == NSAlertSecondButtonReturn)
         [gView editScriptOf:objet atLine:ligne];
+    else if (objet && gView && ligne > 0 && rep == NSAlertThirdButtonReturn)
+        hcv_debogueur_montre(objet, NULL, ligne, YES);
 }
 
 static BOOL gMouseClicked = NO;
@@ -5515,9 +5524,19 @@ static char kHcvMenuGestionnaires;
  * Le panneau est MODAL : pendant la pause, le reste de HC ne répond pas, et
  * le script attend, suspendu dans la pile d'appels. C'est le plus sûr pour
  * une première version — un script relancé par un clic pendant qu'un autre
- * est suspendu mélangerait leurs états. HyperCard laissait faire plus, par
- * son menu du débogueur ; NON MESURÉ DANS HYPERCARD : les noms exacts de ce
- * menu et de ses raccourcis, que ces boutons reprennent de mémoire.
+ * est suspendu mélangerait leurs états.
+ *
+ * LE MENU D'HYPERCARD, MESURÉ DANS HYPERCARD (Basilisk II) le 26 novembre,
+ * sur une capture de l'utilisatrice : Step ⌘S, Step Into ⌘I, Trace, Trace
+ * Into ⌘T, Go ⌘G, Trace Delay…, Set Checkpoint ⌘D, Abort ⌘A, Variable
+ * Watcher, Message Watcher. Les boutons en prennent les mots et les touches.
+ * Des BOUTONS et pas un menu : « c'est mieux que le menu je trouve, c'est
+ * plus direct les boutons », dit par l'utilisatrice le même soir.
+ *
+ * APRÈS UNE ERREUR (le bouton « Debug » du dialogue), le même panneau montre
+ * les variables FIGÉES à l'instant de l'erreur (hc_debug_erreur_variables) ;
+ * Step, Step Into et Go sont grisés, Abort seul ferme — comme dans le menu
+ * d'HyperCard à ce moment-là, mesuré sur la même capture.
  *
  * Écrit sans pouvoir lancer AppKit ici : compilé par le job macOS de
  * l'intégration, pas exécuté. */
@@ -5525,6 +5544,7 @@ static char kHcvMenuGestionnaires;
 @property (nonatomic, strong) NSPanel *panneau;
 @property (nonatomic, strong) NSTextField *ou;
 @property (nonatomic, strong) NSTextView *vars;
+@property (nonatomic, strong) NSArray<NSButton *> *avancer;   /* Step, Step Into, Go */
 @end
 
 static HCDebogueur *gDebogueur;
@@ -5577,10 +5597,11 @@ static void hcv_debug_une_var(void *u, const char *nom, const char *val, int glo
     [sc setDocumentView:self.vars];
     [[self.panneau contentView] addSubview:sc];
 
-    [self bouton:@"Step"      touche:@"s" geste:HC_DEBUG_PAS        x:10];
-    [self bouton:@"Step Into" touche:@"i" geste:HC_DEBUG_PAS_DEDANS x:110];
-    [self bouton:@"Go"        touche:@"g" geste:HC_DEBUG_CONTINUE   x:210];
-    [self bouton:@"Abort"     touche:@"." geste:HC_DEBUG_ABANDON    x:310];
+    self.avancer = @[
+        [self bouton:@"Step"      touche:@"s" geste:HC_DEBUG_PAS        x:10],
+        [self bouton:@"Step Into" touche:@"i" geste:HC_DEBUG_PAS_DEDANS x:110],
+        [self bouton:@"Go"        touche:@"g" geste:HC_DEBUG_CONTINUE   x:210] ];
+    [self bouton:@"Abort"     touche:@"a" geste:HC_DEBUG_ABANDON    x:310];
 }
 
 - (void)geste:(id)sender {
@@ -5588,16 +5609,28 @@ static void hcv_debug_une_var(void *u, const char *nom, const char *val, int glo
 }
 
 - (int)attendSur:(Object *)o message:(const char *)message ligne:(int)ligne {
+    return [self attendSur:o message:message ligne:ligne erreur:NO];
+}
+
+- (int)attendSur:(Object *)o message:(const char *)message ligne:(int)ligne
+          erreur:(BOOL)erreur {
     [self construis];
-    char d[1100];
-    hc_describe(o, d, sizeof d);
-    [self.ou setStringValue:[NSString stringWithFormat:@"%@ — %@, line %d",
-                             hcv_texte(d), hcv_texte(message), ligne]];
+    for (NSButton *b in self.avancer) [b setEnabled:!erreur];
 
     NSMutableString *t = [NSMutableString string];
     [t appendString:@"Variables:\n"];
-    hc_debug_variables(hcv_debug_une_var, (__bridge void *)t);
+    if (erreur)
+        message = hc_debug_erreur_variables(hcv_debug_une_var, (__bridge void *)t);
+    else
+        hc_debug_variables(hcv_debug_une_var, (__bridge void *)t);
     [self.vars setString:t];
+
+    char d[1100];
+    hc_describe(o, d, sizeof d);
+    NSString *gest = (message && *message)
+        ? [NSString stringWithFormat:@" — %@", hcv_texte(message)] : @"";
+    [self.ou setStringValue:[NSString stringWithFormat:@"%@%@, line %d%@",
+                             hcv_texte(d), gest, ligne, erreur ? @" (error)" : @""]];
 
     /* À droite de la fenêtre du script, pour ne pas cacher la ligne. */
     for (HCEditionScript *x in gEditions)
@@ -5620,9 +5653,9 @@ static void hcv_debug_une_var(void *u, const char *nom, const char *val, int glo
 
 @end
 
-static int cocoa_debug_pause(Object *o, const char *message, int ligne)
+static int hcv_debogueur_montre(Object *o, const char *message, int ligne,
+                                BOOL erreur)
 {
-    if (!gView || !o) return HC_DEBUG_CONTINUE;
 
     /* Le script de l'objet, ouvert sur la ligne : la fenêtre déjà ouverte si
      * elle existe, sinon une neuve. */
@@ -5630,9 +5663,13 @@ static int cocoa_debug_pause(Object *o, const char *message, int ligne)
     for (HCEditionScript *x in gEditions)
         if (x.cible == o) { ed = x; break; }
     if (!ed) {
-        [gView editScriptOf:o atLine:0];
+        /* Après une erreur, la ligne fautive encadrée en rouge, comme
+         * « Script » ; la flèche verte s'y ajoute plus bas. */
+        [gView editScriptOf:o atLine:erreur ? ligne : 0];
         for (HCEditionScript *x in gEditions)
             if (x.cible == o) ed = x;
+    } else if (erreur && ed.vue) {
+        hcv_encadre_ligne(ed.vue, ligne);
     }
     /* Une seule ligne courante à la fois : quand le pas change de script,
      * l'ancienne fenêtre perd sa flèche. */
@@ -5653,13 +5690,19 @@ static int cocoa_debug_pause(Object *o, const char *message, int ligne)
     [gView display];
 
     if (!gDebogueur) gDebogueur = [[HCDebogueur alloc] init];
-    int geste = [gDebogueur attendSur:o message:message ligne:ligne];
+    int geste = [gDebogueur attendSur:o message:message ligne:ligne erreur:erreur];
 
     /* La flèche suit le pas ; quand on repart librement, elle s'efface. */
     if ((geste == HC_DEBUG_CONTINUE || geste == HC_DEBUG_ABANDON) &&
         [ed.vue isKindOfClass:[HCScriptView class]])
         ((HCScriptView *)ed.vue).ligneCourante = 0;
     return geste;
+}
+
+static int cocoa_debug_pause(Object *o, const char *message, int ligne)
+{
+    if (!gView || !o) return HC_DEBUG_CONTINUE;
+    return hcv_debogueur_montre(o, message, ligne, NO);
 }
 
 /* ═══ LA PALETTE NAVIGATOR ════════════════════════════════════════════════

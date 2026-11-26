@@ -1046,10 +1046,13 @@ static int g_err_ligne = 0;
 static int  g_err_situe = 0;
 static char g_err_source[256];
 
+static void debug_fige(void);
+
 static void err_situe(Object *o, int ligne)
 {
     if (g_err_situe) return;
     g_err_situe = 1;
+    debug_fige();
     g_err_objet = o;
     g_err_ligne = ligne > 0 ? ligne : 0;
     g_err_source[0] = '\0';
@@ -4683,6 +4686,60 @@ void hc_debug_variables(void (*cb)(void *u, const char *nom, const char *val,
             cb(u, g_frame->v[i].name, g_frame->v[i].val ? g_frame->v[i].val : "", 0);
     for (int i = 0; i < g_globals.n; i++)
         cb(u, g_globals.v[i].name, g_globals.v[i].val ? g_globals.v[i].val : "", 1);
+}
+
+/* LES VARIABLES AU MOMENT DE L'ERREUR, pour le bouton « Debug ».
+ *
+ * Mesuré DANS HYPERCARD (Basilisk II) par l'utilisatrice le 26 novembre : le
+ * dialogue d'erreur porte Debug / Script / Cancel ; « Debug » ouvre le script,
+ * la ligne fautive encadrée, et le Variable Watcher montre ENCORE les
+ * variables du gestionnaire arrêté (« mouseUp », « it »). Dans le menu
+ * Debugger, Step, Step Into, Trace, Trace Into et Go sont grisés ; Abort et
+ * Set Checkpoint restent actifs. On ne repart pas d'une erreur : on regarde,
+ * et l'on abandonne.
+ *
+ * Le dialogue de HC paraît au repos (erreurs_vide), quand le cadre du
+ * gestionnaire n'existe plus. On fige donc les variables là où l'erreur est
+ * située — err_situe, le cadre encore vivant — et le bouton les relit. Ce
+ * que l'utilisatrice voit est le même ; ce qui diffère est qu'aucun script
+ * n'est suspendu pendant le dialogue, et c'est plus sûr.
+ *
+ * Bornes : 128 variables, 63 octets de nom, 255 de valeur. Une valeur plus
+ * longue est coupée — c'est un regard, pas une copie. */
+#define FIGE_MAX 128
+static struct { char nom[64]; char val[256]; int globale; } g_fige[FIGE_MAX];
+static int  g_nfige = 0;
+static char g_fige_message[64];
+
+static void fige_une(const char *nom, const char *val, int globale)
+{
+    if (g_nfige >= FIGE_MAX || !nom) return;
+    snprintf(g_fige[g_nfige].nom, sizeof g_fige[g_nfige].nom, "%s", nom);
+    snprintf(g_fige[g_nfige].val, sizeof g_fige[g_nfige].val, "%s", val ? val : "");
+    g_fige[g_nfige].globale = globale;
+    g_nfige++;
+}
+
+static void debug_fige(void)
+{
+    g_nfige = 0;
+    snprintf(g_fige_message, sizeof g_fige_message, "%s",
+             (g_depth > 0 && g_exec_message) ? g_exec_message : "");
+    if (g_frame)
+        for (int i = 0; i < g_frame->n; i++)
+            fige_une(g_frame->v[i].name, g_frame->v[i].val, 0);
+    for (int i = 0; i < g_globals.n; i++)
+        fige_une(g_globals.v[i].name, g_globals.v[i].val, 1);
+}
+
+const char *hc_debug_erreur_variables(void (*cb)(void *u, const char *nom,
+                                                 const char *val, int globale),
+                                      void *u)
+{
+    if (cb)
+        for (int i = 0; i < g_nfige; i++)
+            cb(u, g_fige[i].nom, g_fige[i].val, g_fige[i].globale);
+    return g_fige_message;
 }
 
 static int frame_has_global(Frame *f, const char *name)

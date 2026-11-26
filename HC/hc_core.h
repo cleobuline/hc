@@ -1203,6 +1203,12 @@ int     hc_debug_points(Object *o, int *lignes, int max);
  * gestionnaire en cours (globale = 0), puis toutes les globales (1). */
 void    hc_debug_variables(void (*cb)(void *u, const char *nom, const char *val,
                                       int globale), void *u);
+/* Les mêmes, FIGÉES au moment de la dernière erreur d'exécution, pour le
+ * bouton « Debug » du dialogue d'erreur, qui paraît quand le script est fini.
+ * Rend le nom du gestionnaire arrêté ("" hors gestionnaire). */
+const char *hc_debug_erreur_variables(void (*cb)(void *u, const char *nom,
+                                                 const char *val, int globale),
+                                      void *u);
 
 /* ---- Registre des piles ouvertes ----
  * Le noyau ne possède aucune pile : hc_load en rend une, hc_free la libère.

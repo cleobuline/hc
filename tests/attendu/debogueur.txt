@@ -47,3 +47,19 @@
 
 == 7. sans rappel debug_pause, rien ne s'arrête ==
       fini sans arrêt
+
+== 8. l'erreur fige les variables, pour le bouton Debug ==
+      [ERR]    !! personne ne répond à « zorglub »
+         locale  x = [7]
+         locale  y = [ici]
+         globale a = [7]
+         globale c = [3]
+         globale g = [5]
+   gestionnaire figé : [mouseUp]
+   -- une faute de commande dans un sous-gestionnaire
+      [ERR]    !! objet introuvable : hide button "Absent"
+         locale  dedans = [2]
+         globale a = [7]
+         globale c = [3]
+         globale g = [5]
+   gestionnaire figé : [bas]

@@ -27,7 +27,12 @@
  *   5 bis. à l'arrêt, hc_debug_variables rend les locales du gestionnaire,
  *      puis les globales ;
  *   6. un point s'ôte, se compte, et meurt avec son objet ;
- *   7. sans rappel debug_pause, rien ne s'arrête. */
+ *   7. sans rappel debug_pause, rien ne s'arrête ;
+ *   8. après une erreur, hc_debug_erreur_variables rend les variables du
+ *      gestionnaire arrêté, figées à l'instant de l'erreur — pour le bouton
+ *      « Debug » du dialogue, qui paraît quand le script est fini. Une
+ *      faute de commande, dite dans un sous-gestionnaire, fige les locales
+ *      de CELUI-LÀ, pas de l'appelant. */
 #include "hc_core.h"
 #include <stdio.h>
 #include <string.h>
@@ -172,6 +177,25 @@ int main(void)
     hc_set_script(B, "on mouseUp\n  put 1 into q\n  debug checkpoint\n  put \"fini sans arrêt\"\nend mouseUp\n");
     hc_debug_point_pose(B, 2, 1);
     hc_send(B, "mouseUp");
+    hc_free(st);
+
+    puts("\n== 8. l'erreur fige les variables, pour le bouton Debug ==");
+    st = hc_new_stack("T3");
+    bg = hc_new_background(st, "F");
+    c  = hc_new_card(st, bg, "C");
+    B  = hc_new_button(c, "B");
+    hc_set_current_card(c);
+    hc_set_script(B, "on mouseUp\n  global g\n  put 5 into g\n  put 7 into x\n"
+                     "  put \"ici\" into y\n  zorglub\n  put 8 into x\nend mouseUp\n");
+    hc_send(B, "mouseUp");
+    { const char *m = hc_debug_erreur_variables(une_var, NULL);
+      printf("   gestionnaire figé : [%s]\n", m); }
+    puts("   -- une faute de commande dans un sous-gestionnaire");
+    hc_set_script(B, "on mouseUp\n  put 1 into haut\n  bas\nend mouseUp\n"
+                     "on bas\n  put 2 into dedans\n  hide button \"Absent\"\nend bas\n");
+    hc_send(B, "mouseUp");
+    { const char *m = hc_debug_erreur_variables(une_var, NULL);
+      printf("   gestionnaire figé : [%s]\n", m); }
     hc_free(st);
     return 0;
 }
