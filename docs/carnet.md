@@ -21,7 +21,12 @@ sur d'autres personnes au-delà de ce qu'elle en raconte elle-même.
 - **Au retour, un Mac SE** (40 000 francs), **LightSpeed C** et **Turbo
   Pascal**. MAC•CAM Workshop date de cette époque, vers 1990, en THINK C,
   successeur de LightSpeed C : c'est THINK C qui a laissé dans l'XFCN les
-  noms de fonctions qui ont permis de la retraduire.
+  noms de fonctions qui ont permis de la retraduire. Sa date de naissance,
+  relevée par elle le 26 novembre 2026 dans le Finder, sous Basilisk II :
+  **le mardi 3 juillet 1990**, date de création de la pile. Sa pile a été
+  choisie pour figurer dans **HyperCard Archive vol. 1**, à côté de celle
+  d'Alexander Thomas (« Dr. Lex »), « 3D parametric equations » : « à côté
+  de la pile d'Alexandre, j'ai pas à avoir honte ».
 - **Des XFCN d'analyse de partitions** pour un musicologue.
 - **Un agenda de prise de rendez-vous en THINK C**, écrit à la main à même
   la Toolbox, sans bibliothèque de classes, dans une start-up.
