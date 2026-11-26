@@ -337,6 +337,12 @@ static int interrompu_pont(void *d)
     return x->hote.interrompu ? x->hote.interrompu(x->hote.donnees) : 0;
 }
 
+static void avant_ligne_pont(void *d, const HctNoeud *n)
+{
+    HctExec *x = d;
+    x->hote.avant_ligne(x->hote.donnees, n);
+}
+
 static int saute_erreur_pont(void *d, HctContexte *ctx)
 {
     HctExec *x = (HctExec *)d;
@@ -1638,6 +1644,14 @@ void hct_exec(HctExec *x, const HctNoeud *n)
                     if (saute_la_faute(x)) continue;
                     return;
                 }
+                /* Le débogueur regarde la ligne AVANT qu'elle s'exécute,
+                 * comme HyperCard encadre la ligne qu'il va jouer. Il peut
+                 * avoir abandonné le script pendant la pause : on relit
+                 * l'interruption. */
+                if (x->ctx.hote.avant_ligne) {
+                    x->ctx.hote.avant_ligne(x->ctx.hote.donnees, n->fils[i]);
+                    if (hct_ctx_interrompu(&x->ctx)) return;
+                }
                 hct_exec(x, n->fils[i]);
                 if (x->ctx.erreur && saute_la_faute(x)) continue;
                 if (x->ctx.erreur || x->signal) return;
@@ -1877,6 +1891,11 @@ void hct_exec_init(HctExec *x, HctHote hote)
      * raison même que dit le commentaire du dessus : posé dans v3_hote, il
      * n'arrivait jamais à l'exécuteur, et rien ne sautait. */
     pont.saute_erreur  = hote.saute_erreur  ? saute_erreur_pont  : NULL;
+    /* Et le débogueur, pour la même raison, le 26 novembre : sans cette
+     * ligne, les points d'arrêt et le pas à pas ne s'arrêtaient jamais —
+     * seul « debug checkpoint », qui passe par une commande, le faisait. Le
+     * harnais debogueur l'a montré au premier lancement. */
+    pont.avant_ligne   = hote.avant_ligne   ? avant_ligne_pont   : NULL;
     pont.arg_max       = hote.arg_max;
 
     hct_ctx_init(&x->ctx, pont);

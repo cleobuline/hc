@@ -566,10 +566,135 @@ void hc_interrompre(void)
 
 int hc_interrompu(void) { return g_interrompu; }
 
+/* ==================== le débogueur ====================
+ *
+ * La 1.1, décidée par l'utilisatrice : suivre un script ligne à ligne, comme
+ * le débogueur d'HyperCard 2. Le noyau tient l'ÉTAT — les points d'arrêt, le
+ * mode de pas — et décide QUAND s'arrêter ; l'hôte montre la ligne et
+ * attend le geste, par debug_pause (hc_core.h).
+ *
+ * L'exécuteur appelle v3_avant_ligne avant chaque instruction. On s'y arrête
+ * si la ligne porte un point d'arrêt, ou si l'on avance pas à pas :
+ *
+ *   PAS          « Step » : la ligne suivante du MÊME gestionnaire, ou de
+ *                celui qui l'a appelé quand il se termine — un gestionnaire
+ *                appelé en chemin s'exécute sans s'arrêter ;
+ *   PAS_DEDANS   « Step Into » : la ligne suivante, où qu'elle soit, y
+ *                compris dans un gestionnaire appelé.
+ *
+ * La PROFONDEUR est celle de g_depth, qui compte les gestionnaires en cours.
+ * Le mode retombe quand le script est fini, comme l'interruption.
+ *
+ * NON MESURÉ DANS HYPERCARD, à faire : les noms et raccourcis exacts du menu
+ * du débogueur, ce que fait « debug checkpoint » (s'arrête-t-il sur SA ligne
+ * ou sur la suivante ?), et si un point d'arrêt survit à la modification du
+ * script. On suit ici le plus simple : on s'arrête sur la ligne de « debug
+ * checkpoint », et les points restent attachés à leur numéro de ligne. */
+static const HcHost *g_host;          /* défini plus bas, avec l'hôte console */
+
+typedef struct { Object *o; int ligne; } PointArret;
+static PointArret *g_points = NULL;
+static int g_npoints = 0, g_cappoints = 0;
+
+enum { DBG_LIBRE, DBG_PAS, DBG_PAS_DEDANS };
+static int g_dbg_mode = DBG_LIBRE;
+static int g_dbg_prof = 0;
+
+int hc_debug_point(Object *o, int ligne)
+{
+    for (int i = 0; i < g_npoints; i++)
+        if (g_points[i].o == o && g_points[i].ligne == ligne) return 1;
+    return 0;
+}
+
+void hc_debug_point_pose(Object *o, int ligne, int pose)
+{
+    if (!o || ligne < 1) return;
+    for (int i = 0; i < g_npoints; i++)
+        if (g_points[i].o == o && g_points[i].ligne == ligne) {
+            if (!pose) g_points[i] = g_points[--g_npoints];
+            return;
+        }
+    if (!pose) return;
+    if (g_npoints == g_cappoints) {
+        int cap = g_cappoints ? g_cappoints * 2 : 16;
+        PointArret *t = realloc(g_points, (size_t)cap * sizeof *t);
+        if (!t) return;                 /* un point de moins, pas une panne */
+        g_points = t;
+        g_cappoints = cap;
+    }
+    g_points[g_npoints].o = o;
+    g_points[g_npoints].ligne = ligne;
+    g_npoints++;
+}
+
+int hc_debug_points(Object *o, int *lignes, int max)
+{
+    int n = 0;
+    for (int i = 0; i < g_npoints; i++)
+        if (g_points[i].o == o) {
+            if (lignes && n < max) lignes[n] = g_points[i].ligne;
+            n++;
+        }
+    return n;
+}
+
+/* Un objet qui meurt emporte ses points : une adresse libérée peut être
+ * rendue à un objet neuf, qui hériterait d'arrêts qu'on n'a jamais posés. */
+static void debug_oublie(Object *o)
+{
+    for (int i = 0; i < g_npoints; )
+        if (g_points[i].o == o) g_points[i] = g_points[--g_npoints];
+        else i++;
+}
+
+/* S'arrêter sur une ligne : l'hôte la montre et rend le geste. Sans hôte
+ * qui sache le faire, on ne s'arrête pas — un script ne doit jamais se
+ * bloquer sur une pause que personne ne peut lever. */
+static void debug_arret(Object *o, const char *message, int ligne)
+{
+    if (!g_host || !g_host->debug_pause) return;
+    int geste = g_host->debug_pause(o, message ? message : "", ligne);
+    switch (geste) {
+    case HC_DEBUG_PAS:
+        g_dbg_mode = DBG_PAS;
+        g_dbg_prof = g_depth;
+        break;
+    case HC_DEBUG_PAS_DEDANS:
+        g_dbg_mode = DBG_PAS_DEDANS;
+        break;
+    case HC_DEBUG_ABANDON:
+        /* Le chemin de Cmd-., sans dialogue. Il passe outre cantAbort : c'est
+         * l'utilisatrice qui le demande, depuis le débogueur, pas une touche
+         * tombée au hasard. */
+        g_dbg_mode = DBG_LIBRE;
+        if (g_depth > 0 || g_msg_box > 0) g_interrompu = 1;
+        break;
+    default:                            /* HC_DEBUG_CONTINUE */
+        g_dbg_mode = DBG_LIBRE;
+        break;
+    }
+}
+
+static void v3_avant_ligne(void *d, const HctNoeud *n)
+{
+    (void)d;
+    if (!n || !g_exec_objet) return;
+    int ligne = n->jeton.ligne;
+    int arret = g_dbg_mode == DBG_PAS_DEDANS
+             || (g_dbg_mode == DBG_PAS && g_depth <= g_dbg_prof)
+             || (g_npoints && hc_debug_point(g_exec_objet, ligne));
+    if (arret) debug_arret(g_exec_objet, g_exec_message, ligne);
+}
+
 /* Au repos : plus rien ne tourne, la demande est servie. */
 static void interruption_servie(void)
 {
-    if (g_depth == 0 && g_msg_box == 0) { g_interrompu = 0; g_abandon = 0; }
+    if (g_depth == 0 && g_msg_box == 0) {
+        g_interrompu = 0;
+        g_abandon = 0;
+        g_dbg_mode = DBG_LIBRE;         /* le pas à pas meurt avec le script */
+    }
 }
 
 const char *hc_typename(ObjType t)
@@ -2447,6 +2572,7 @@ void hc_free(Object *o)
      * un champ emporté par la suppression de sa carte est oublié lui aussi.
      * Recenser les appelants un par un, c'est en oublier un. */
     oublie_objet_interne(o);
+    debug_oublie(o);
     /* Prévenir l'hôte AVANT de libérer quoi que ce soit. C'est le seul
      * endroit où un objet meurt, donc le seul où le dire une fois pour
      * toutes — recenser les appelants un par un, c'est en oublier un. */
@@ -4543,6 +4669,21 @@ typedef struct Frame {
 
 static Frame  g_globals;        /* vit aussi longtemps que le programme */
 static Frame *g_frame = NULL;   /* gestionnaire en cours ; NULL = boîte de message */
+
+/* LE VARIABLE WATCHER du débogueur : les variables LOCALES du gestionnaire
+ * en cours, puis TOUTES les globales, dans l'ordre où elles sont nées. Une
+ * locale déclarée globale n'est pas une locale : elle vit dans les globales,
+ * où on la montre. Hors script, seules les globales. */
+void hc_debug_variables(void (*cb)(void *u, const char *nom, const char *val,
+                                   int globale), void *u)
+{
+    if (!cb) return;
+    if (g_frame)
+        for (int i = 0; i < g_frame->n; i++)
+            cb(u, g_frame->v[i].name, g_frame->v[i].val ? g_frame->v[i].val : "", 0);
+    for (int i = 0; i < g_globals.n; i++)
+        cb(u, g_globals.v[i].name, g_globals.v[i].val ? g_globals.v[i].val : "", 1);
+}
 
 static int frame_has_global(Frame *f, const char *name)
 {
@@ -14752,6 +14893,18 @@ static int v3_cmd_flash(HctContexte *ctx, const HctNoeud *n)
 static int v3_cmd_debug(HctContexte *ctx, const HctNoeud *n)
 {
     (void)ctx;
+    /* « debug checkpoint » : le point d'arrêt ÉCRIT dans le script, celui
+     * d'HyperCard 2, qui ouvre le débogueur sur sa ligne. */
+    if (n->nfils >= 1) {
+        char mot[32];
+        mot[0] = '\0';
+        v3_brut(n->fils[0], mot, sizeof mot);
+        if (ci_equal(mot, "checkpoint")) {
+            debug_arret(g_exec_objet, g_exec_message, n->jeton.ligne);
+            set_result("");
+            return 1;
+        }
+    }
     for (int i = 0; i < n->nfils; i++) {
         char mot[32];
         mot[0] = '\0';
@@ -18399,6 +18552,7 @@ static HctHote v3_hote(void)
     h.ecrit_message = v3_ecrit_message;
     h.lit_message   = v3_lit_message;
     h.resultat_vide = v3_resultat_vide;
+    h.avant_ligne   = v3_avant_ligne;
     h.arg_max = HC_VAL - 1;             /* les arguments d'une fonction de pile */
 
     return h;

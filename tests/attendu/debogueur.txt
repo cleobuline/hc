@@ -1,0 +1,49 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. Step : ligne à ligne, sans entrer dans sousProgramme ==
+      [ARRÊT] button "B".mouseUp ligne 2 -> pas
+      [ARRÊT] button "B".mouseUp ligne 3 -> pas
+      [ARRÊT] button "B".mouseUp ligne 4 -> pas
+      après : a=20 c=3
+
+== 2. Step Into : dans sousProgramme, puis retour ==
+      [ARRÊT] button "B".mouseUp ligne 2 -> pas
+      [ARRÊT] button "B".mouseUp ligne 3 -> pas dedans
+      [ARRÊT] button "B".sousProgramme ligne 7 -> pas
+      [ARRÊT] button "B".sousProgramme ligne 8 -> pas
+      [ARRÊT] button "B".mouseUp ligne 4 -> pas
+      après : a=20 c=3
+
+== 3. Go : un seul arrêt, au point ==
+      [ARRÊT] button "B".mouseUp ligne 2 -> continuer
+      après : a=20 c=3
+
+== 4. Abort : tout s'arrête, c n'est pas posé ==
+      [ARRÊT] button "B".mouseUp ligne 2 -> pas
+      [ARRÊT] button "B".mouseUp ligne 3 -> abandon
+      après l'abandon : a= c=
+   -- le clic suivant repart libre jusqu'au point, sans pas à pas hérité
+      [ARRÊT] button "B".mouseUp ligne 2 -> continuer
+      après : a=20 c=3
+
+== 5. debug checkpoint s'arrête sur sa ligne ==
+      [ARRÊT] button "outil".t ligne 3 -> pas
+      [ARRÊT] button "outil".t ligne 4 -> pas
+      [ARRÊT] button "outil".t ligne 5 -> continuer
+      2
+
+== 5 bis. le Variable Watcher : locales, puis globales ==
+      [ARRÊT] button "outil".t ligne 5 -> continuer
+         locale  loc = [ici]
+         globale a = [7]
+         globale c = [3]
+
+== 6. les points : poser, compter, ôter, mourir avec l'objet ==
+   points de B : 2
+   lignes : 3 4
+   après en avoir ôté un : 1
+   après deux refus : 1
+   points de autre : 1
+   points de B après la mort de la pile : 0
+
+== 7. sans rappel debug_pause, rien ne s'arrête ==
+      fini sans arrêt

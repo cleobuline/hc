@@ -1030,6 +1030,15 @@ typedef struct {
      * de souris ensuite envoyait « mouseLeave » à un script libéré. */
     void (*object_gone)(Object *o);
 
+    /* LE DÉBOGUEUR (la 1.1). Le noyau s'arrête AVANT une ligne — un point
+     * d'arrêt, « debug checkpoint », un pas — et appelle ce rappel avec
+     * l'objet, le nom du gestionnaire et le numéro de la ligne dans le
+     * script. L'hôte la montre, attend le geste de l'utilisatrice, et rend
+     * l'un des HC_DEBUG_… ci-dessous. Il peut faire tourner sa boucle
+     * d'événements pendant ce temps : le script attend, suspendu.
+     * NULL = pas de débogueur ; le noyau ne s'arrête jamais. */
+    int (*debug_pause)(Object *o, const char *message, int ligne);
+
     /* UN MENU LOCAL, POUR L'XFCN « PopUpMenu » (Andrew Gilmartin, Brown
      * University), que des piles d'époque appellent et dont le code 68000
      * ne peut pas tourner ici — voir v3_popupmenu dans hc_core.c.
@@ -1176,6 +1185,24 @@ int     hc_is_running(void);
  * hc_interrompu() dit si un arrêt est en cours. */
 void    hc_interrompre(void);
 int     hc_interrompu(void);
+
+/* ---- Le débogueur (la 1.1) ----
+ * Les gestes que rend debug_pause : continuer jusqu'au prochain point
+ * d'arrêt, avancer d'une ligne dans le même gestionnaire (« Step »), d'une
+ * ligne où qu'elle soit (« Step Into »), ou abandonner le script.
+ *
+ * Les points d'arrêt sont posés par l'éditeur de script, sur un objet et un
+ * numéro de ligne de son script ; ils vivent le temps de la session et
+ * meurent avec leur objet. hc_debug_points rend leur nombre pour cet objet,
+ * et en écrit au plus `max` dans `lignes` (qui peut être NULL). */
+enum { HC_DEBUG_CONTINUE = 0, HC_DEBUG_PAS, HC_DEBUG_PAS_DEDANS, HC_DEBUG_ABANDON };
+void    hc_debug_point_pose(Object *o, int ligne, int pose);
+int     hc_debug_point(Object *o, int ligne);
+int     hc_debug_points(Object *o, int *lignes, int max);
+/* Les variables visibles à l'arrêt, pour le Variable Watcher : les locales du
+ * gestionnaire en cours (globale = 0), puis toutes les globales (1). */
+void    hc_debug_variables(void (*cb)(void *u, const char *nom, const char *val,
+                                      int globale), void *u);
 
 /* ---- Registre des piles ouvertes ----
  * Le noyau ne possède aucune pile : hc_load en rend une, hc_free la libère.

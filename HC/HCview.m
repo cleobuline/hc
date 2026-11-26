@@ -5343,9 +5343,53 @@ static char kHcvMenuGestionnaires;
                          orientation:NSVerticalRuler];
     if (self) {
         [self setClientView:tv];
-        [self setRuleThickness:38];
+        /* 38 pour les numéros, et 10 de plus à gauche pour la pastille des
+         * points d'arrêt. */
+        [self setRuleThickness:48];
     }
     return self;
+}
+
+/* L'objet dont cette règle numérote le script : celui de la fenêtre qui
+ * porte sa vue (HCEditionScript). NULL s'il est mort entre-temps. */
+- (Object *)cible {
+    NSView *tv = [self clientView];
+    for (HCEditionScript *ed in gEditions)
+        if (ed.vue == tv) return ed.cible;
+    return NULL;
+}
+
+/* LES POINTS D'ARRÊT DU DÉBOGUEUR (la 1.1) : un clic dans la marge pose ou
+ * ôte un point sur la ligne cliquée, comme dans Xcode. HyperCard le faisait
+ * par Option-clic dans le texte, ou par « Set Checkpoint » — NON MESURÉ
+ * DANS HYPERCARD, à relever : le geste exact et son raccourci.
+ *
+ * Le point vise le numéro de ligne du script ENREGISTRÉ : c'est lui que le
+ * noyau exécute. Une ligne ajoutée sans cliquer sur OK décale les numéros. */
+- (void)mouseDown:(NSEvent *)ev {
+    NSTextView *tv = (NSTextView *)[self clientView];
+    Object *o = [self cible];
+    if (!o || ![tv isKindOfClass:[NSTextView class]]) return;
+    NSLayoutManager *lm = [tv layoutManager];
+    NSTextContainer *tc = [tv textContainer];
+    if (!lm || !tc) return;
+
+    NSPoint p = [tv convertPoint:[ev locationInWindow] fromView:nil];
+    NSPoint o2 = [tv textContainerOrigin];
+    p.x = 1;                                    /* le début de la ligne */
+    p.y -= o2.y;
+    NSString *s = [tv string];
+    NSUInteger i = [s length];
+    if ([s length] > 0 && p.y <= NSMaxY([lm usedRectForTextContainer:tc])) {
+        NSUInteger gi = [lm glyphIndexForPoint:p inTextContainer:tc];
+        i = [lm characterIndexForGlyphAtIndex:gi];
+    }
+    NSInteger ligne = 1;
+    for (NSUInteger k = 0; k < i && k < [s length]; k++)
+        if ([s characterAtIndex:k] == '\n') ligne++;
+
+    hc_debug_point_pose(o, (int)ligne, !hc_debug_point(o, (int)ligne));
+    [self setNeedsDisplay:YES];
 }
 
 - (void)drawHashMarksAndLabelsInRect:(NSRect)rect {
@@ -5362,6 +5406,7 @@ static char kHcvMenuGestionnaires;
 
     NSInteger fautive = [tv isKindOfClass:[HCScriptView class]]
                       ? ((HCScriptView *)tv).ligneEncadree : 0;
+    Object *cible = [self cible];
     NSDictionary *ordinaire = @{
         NSFontAttributeName : [NSFont monospacedDigitSystemFontOfSize:10
                                                                weight:NSFontWeightRegular],
@@ -5401,6 +5446,13 @@ static char kHcvMenuGestionnaires;
         CGFloat y = MIN(haut.y, bas.y) + (fabs(bas.y - haut.y) - t.height) / 2;
         [n drawAtPoint:NSMakePoint([self ruleThickness] - 5 - t.width, y)
         withAttributes:at];
+        /* La pastille d'un point d'arrêt, à gauche du numéro. */
+        if (cible && hc_debug_point(cible, (int)ligne)) {
+            CGFloat d = 8;
+            NSRect r = NSMakeRect(3, y + (t.height - d) / 2, d, d);
+            [[NSColor systemRedColor] setFill];
+            [[NSBezierPath bezierPathWithOvalInRect:r] fill];
+        }
 
         if (i >= len) break;                        /* la ligne vide du bout */
         while (i < len && [s characterAtIndex:i] != '\n') i++;
@@ -5411,6 +5463,148 @@ static char kHcvMenuGestionnaires;
 }
 
 @end
+
+/* ═══ LE DÉBOGUEUR (la 1.1) ═══════════════════════════════════════════════
+ *
+ * Le noyau s'arrête AVANT une ligne — un point posé dans la marge de
+ * l'éditeur, un « debug checkpoint », un pas — et appelle cocoa_debug_pause.
+ * On ouvre le script de l'objet sur cette ligne, encadrée, et l'on attend le
+ * geste dans un petit panneau modal :
+ *
+ *   Step       la ligne suivante du même gestionnaire          (Cmd-S)
+ *   Step Into  la ligne suivante, même dans un gestionnaire appelé (Cmd-I)
+ *   Go         jusqu'au prochain point d'arrêt                 (Cmd-G)
+ *   Abort      arrêter le script                               (Cmd-.)
+ *
+ * et, dessous, les variables : les locales du gestionnaire, puis les
+ * globales (hc_debug_variables) — le Variable Watcher d'HyperCard, en lecture
+ * seule pour commencer.
+ *
+ * Le panneau est MODAL : pendant la pause, le reste de HC ne répond pas, et
+ * le script attend, suspendu dans la pile d'appels. C'est le plus sûr pour
+ * une première version — un script relancé par un clic pendant qu'un autre
+ * est suspendu mélangerait leurs états. HyperCard laissait faire plus, par
+ * son menu du débogueur ; NON MESURÉ DANS HYPERCARD : les noms exacts de ce
+ * menu et de ses raccourcis, que ces boutons reprennent de mémoire.
+ *
+ * Écrit sans pouvoir lancer AppKit ici : compilé par le job macOS de
+ * l'intégration, pas exécuté. */
+@interface HCDebogueur : NSObject
+@property (nonatomic, strong) NSPanel *panneau;
+@property (nonatomic, strong) NSTextField *ou;
+@property (nonatomic, strong) NSTextView *vars;
+@end
+
+static HCDebogueur *gDebogueur;
+
+static void hcv_debug_une_var(void *u, const char *nom, const char *val, int globale)
+{
+    NSMutableString *t = (__bridge NSMutableString *)u;
+    (void)globale;
+    [t appendFormat:@"  %@ = %@\n", hcv_texte(nom), hcv_texte(val)];
+}
+
+@implementation HCDebogueur
+
+- (NSButton *)bouton:(NSString *)titre touche:(NSString *)k geste:(int)g x:(CGFloat)x {
+    NSButton *b = [[NSButton alloc] initWithFrame:NSMakeRect(x, 10, 96, 30)];
+    [b setTitle:titre];
+    [b setBezelStyle:NSBezelStyleRounded];
+    [b setKeyEquivalent:k];
+    [b setKeyEquivalentModifierMask:NSEventModifierFlagCommand];
+    [b setTag:g];
+    [b setTarget:self];
+    [b setAction:@selector(geste:)];
+    [b setAutoresizingMask:NSViewMaxYMargin];
+    [[self.panneau contentView] addSubview:b];
+    return b;
+}
+
+- (void)construis {
+    if (self.panneau) return;
+    self.panneau = [[NSPanel alloc]
+        initWithContentRect:NSMakeRect(320, 120, 420, 300)
+                  styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskResizable)
+                    backing:NSBackingStoreBuffered
+                      defer:NO];
+    [self.panneau setTitle:@"Debugger"];
+    [self.panneau setReleasedWhenClosed:NO];
+
+    self.ou = [NSTextField labelWithString:@""];
+    [self.ou setFrame:NSMakeRect(10, 268, 400, 20)];
+    [self.ou setAutoresizingMask:NSViewWidthSizable | NSViewMinYMargin];
+    [[self.panneau contentView] addSubview:self.ou];
+
+    NSScrollView *sc = [[NSScrollView alloc] initWithFrame:NSMakeRect(10, 50, 400, 212)];
+    [sc setHasVerticalScroller:YES];
+    [sc setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
+    self.vars = [[NSTextView alloc] initWithFrame:[[sc contentView] bounds]];
+    [self.vars setEditable:NO];
+    [self.vars setFont:[NSFont fontWithName:@"Monaco" size:11]];
+    [self.vars setAutoresizingMask:NSViewWidthSizable];
+    [sc setDocumentView:self.vars];
+    [[self.panneau contentView] addSubview:sc];
+
+    [self bouton:@"Step"      touche:@"s" geste:HC_DEBUG_PAS        x:10];
+    [self bouton:@"Step Into" touche:@"i" geste:HC_DEBUG_PAS_DEDANS x:110];
+    [self bouton:@"Go"        touche:@"g" geste:HC_DEBUG_CONTINUE   x:210];
+    [self bouton:@"Abort"     touche:@"." geste:HC_DEBUG_ABANDON    x:310];
+}
+
+- (void)geste:(id)sender {
+    [NSApp stopModalWithCode:[sender tag]];
+}
+
+- (int)attendSur:(Object *)o message:(const char *)message ligne:(int)ligne {
+    [self construis];
+    char d[1100];
+    hc_describe(o, d, sizeof d);
+    [self.ou setStringValue:[NSString stringWithFormat:@"%@ — %@, line %d",
+                             hcv_texte(d), hcv_texte(message), ligne]];
+
+    NSMutableString *t = [NSMutableString string];
+    [t appendString:@"Variables:\n"];
+    hc_debug_variables(hcv_debug_une_var, (__bridge void *)t);
+    [self.vars setString:t];
+
+    [self.panneau makeKeyAndOrderFront:nil];
+    NSModalResponse r = [NSApp runModalForWindow:self.panneau];
+    [self.panneau orderOut:nil];
+    if (r < HC_DEBUG_CONTINUE || r > HC_DEBUG_ABANDON) return HC_DEBUG_ABANDON;
+    return (int)r;
+}
+
+@end
+
+static int cocoa_debug_pause(Object *o, const char *message, int ligne)
+{
+    if (!gView || !o) return HC_DEBUG_CONTINUE;
+
+    /* Le script de l'objet, ouvert sur la ligne : la fenêtre déjà ouverte si
+     * elle existe, sinon une neuve. */
+    HCEditionScript *ed = nil;
+    for (HCEditionScript *x in gEditions)
+        if (x.cible == o) { ed = x; break; }
+    if (!ed) {
+        [gView editScriptOf:o atLine:ligne];
+        for (HCEditionScript *x in gEditions)
+            if (x.cible == o) ed = x;
+    } else {
+        [ed.panneau orderFront:nil];
+        hcv_encadre_ligne(ed.vue, ligne);
+    }
+    /* La carte telle que le script l'a laissée jusqu'ici. */
+    [gView display];
+
+    if (!gDebogueur) gDebogueur = [[HCDebogueur alloc] init];
+    int geste = [gDebogueur attendSur:o message:message ligne:ligne];
+
+    /* Le cadre suit le pas ; quand on repart librement, il s'efface. */
+    if ((geste == HC_DEBUG_CONTINUE || geste == HC_DEBUG_ABANDON) &&
+        [ed.vue isKindOfClass:[HCScriptView class]])
+        ((HCScriptView *)ed.vue).ligneEncadree = 0;
+    return geste;
+}
 
 /* ═══ LA PALETTE NAVIGATOR ════════════════════════════════════════════════
  *
@@ -10428,6 +10622,7 @@ static void hcv_survol(HCView *v, Object *carte)
     host.drag          = cocoa_drag;
     host.click_at      = cocoa_click_at;
     host.click_twice_at = cocoa_click_twice_at;
+    host.debug_pause   = cocoa_debug_pause;
     host.type_text     = cocoa_type_text;
     host.visual_effect = cocoa_visual_effect;
     host.idle          = cocoa_idle;
