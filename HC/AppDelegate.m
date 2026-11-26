@@ -799,8 +799,11 @@ static NSMenu *gRecentMenu = nil;
         { @"Brushes",   4, @"4" },
         /* Cmd-M, le raccourci d'HyperCard pour la boîte de message. */
         { @"Message",   5, @"m" },
+        /* Le Message Watcher (la 1.1) : HyperCard l'a dans son menu
+         * Debugger, sans raccourci ; HC n'a pas ce menu. Voir HCview.m. */
+        { @"Message Watcher", 6, @"" },
     };
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < (int)(sizeof pals / sizeof *pals); i++) {
         NSMenuItem *mi = [[NSMenuItem alloc] initWithTitle:pals[i].title
                                                     action:@selector(togglePalette:)
                                              keyEquivalent:pals[i].key];

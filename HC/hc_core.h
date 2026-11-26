@@ -1039,6 +1039,16 @@ typedef struct {
      * NULL = pas de débogueur ; le noyau ne s'arrête jamais. */
     int (*debug_pause)(Object *o, const char *message, int ligne);
 
+    /* LE MESSAGE WATCHER : chaque message envoyé, deux fois — à son départ
+     * (pris = -1), puis à son retour (pris = 1 si un gestionnaire l'a pris,
+     * 0 sinon ; un « pass » jusqu'au bout ne compte pas). `id` est le même
+     * aux deux appels, et croît d'un message à l'autre ; `profondeur` est 0
+     * pour un message de l'hôte (un clic, idle), 1 pour un message envoyé
+     * par un gestionnaire, etc. Les fonctions de l'utilisateur passent aussi.
+     * Le rappel ne doit RIEN exécuter : il regarde. NULL : rien. */
+    void (*message_vu)(int id, const char *message, Object *cible,
+                       int profondeur, int pris);
+
     /* UN MENU LOCAL, POUR L'XFCN « PopUpMenu » (Andrew Gilmartin, Brown
      * University), que des piles d'époque appellent et dont le code 68000
      * ne peut pas tourner ici — voir v3_popupmenu dans hc_core.c.

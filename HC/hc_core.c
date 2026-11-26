@@ -19325,10 +19325,26 @@ static int hc_send_args_k(Object *target, const char *message,
                           char argv[][HC_VAL], int argc, int isfunc,
                           int cible_neuve)
 {
+    /* LE MESSAGE WATCHER regarde partir et revenir chaque message. Mesuré
+     * DANS HYPERCARD (Basilisk II) sur une capture de l'utilisatrice le 26
+     * novembre : la fenêtre « Message Watcher », ses cases « Hide unused
+     * messages » et « Hide idle », et « mouseUp » dans la liste. Le départ et
+     * le retour sont deux appels, pour que l'hôte range le message à sa
+     * place — avant ceux qu'il envoie à son tour — et sache pourtant, au
+     * retour, si quelqu'un l'a pris. */
+    static int g_message_id = 0;
+    int id = ++g_message_id;
+    int prof = g_depth;
+    if (g_host && g_host->message_vu && message)
+        g_host->message_vu(id, message, target, prof, -1);
+
     ARENA_MARK;
     int r = hc_send_args_k_body(target, message, argv, argc, isfunc, cible_neuve);
     ARENA_FREE;
     interruption_servie();
+
+    if (g_host && g_host->message_vu && message)
+        g_host->message_vu(id, message, target, prof, r ? 1 : 0);
 
     /* DÉVERROUILLAGE AUTOMATIQUE en retombant au repos.
      *

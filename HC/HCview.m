@@ -5705,6 +5705,172 @@ static int cocoa_debug_pause(Object *o, const char *message, int ligne)
     return hcv_debogueur_montre(o, message, ligne, NO);
 }
 
+/* ═══ LE MESSAGE WATCHER (la 1.1) ════════════════════════════════════════
+ *
+ * MESURÉ DANS HYPERCARD (Basilisk II), sur une capture de l'utilisatrice le
+ * 26 novembre : une petite fenêtre « Message Watcher », deux cases en tête,
+ * « Hide unused messages » (cochée sur la capture) et « Hide idle » (non
+ * cochée), et dessous la liste des messages, un par ligne — « mouseUp ».
+ *
+ * Le noyau signale chaque message deux fois (message_vu, hc_core.h) : au
+ * départ, où on le range — avant ceux que son gestionnaire enverra —, et au
+ * retour, où l'on apprend si quelqu'un l'a pris. « Hide unused messages »
+ * cache ceux que personne n'a pris ; « Hide idle », le message idle.
+ *
+ * Fenêtre FERMÉE, le rappel rend la main tout de suite : idle part sans
+ * cesse, et rien ne doit coûter quand personne ne regarde.
+ *
+ * NON MESURÉ, et écrit comme tel :
+ *   - le retrait des messages imbriqués (deux espaces par niveau ici) ;
+ *   - si HyperCard montre les appels de fonction (ici, oui) ;
+ *   - si HyperCard montre les commandes intégrées, « put », « go », qu'il
+ *     envoie aussi comme messages (HC ne les envoie pas : absentes) ;
+ *   - l'état des cases à la première ouverture (ici, celui de la capture) ;
+ *   - la place de la commande dans les menus : HyperCard l'a dans son menu
+ *     Debugger, HC dans le menu Tools.
+ *
+ * Compilé par la CI, joué DANS HC (l'application) par l'utilisatrice. */
+@interface HCMessageVu : NSObject
+@property (nonatomic) int ident;
+@property (nonatomic) int prof;
+@property (nonatomic) int pris;                 /* -1 : pas encore revenu */
+@property (nonatomic, strong) NSString *nom;
+@end
+@implementation HCMessageVu
+@end
+
+#define HCV_MW_MAX 500                          /* au-delà, les plus anciens partent */
+
+static NSPanel  *gMWPanel = nil;
+static NSButton *gMWCacheInutiles = nil;
+static NSButton *gMWCacheIdle = nil;
+static NSTextView *gMWTexte = nil;
+static NSMutableArray<HCMessageVu *> *gMWListe = nil;
+static NSTimeInterval gMWDernier = 0;
+static BOOL gMWPrevu = NO;
+
+@interface HCMessageWatcherCible : NSObject
+@end
+static HCMessageWatcherCible *gMWCible = nil;
+
+static void hcv_mw_dessine(void)
+{
+    gMWPrevu = NO;
+    if (!gMWPanel || ![gMWPanel isVisible]) return;
+    BOOL sansInutiles = [gMWCacheInutiles state] == NSControlStateValueOn;
+    BOOL sansIdle     = [gMWCacheIdle state] == NSControlStateValueOn;
+    NSMutableString *t = [NSMutableString string];
+    for (HCMessageVu *m in gMWListe) {
+        if (sansInutiles && m.pris == 0) continue;
+        if (sansIdle && [m.nom caseInsensitiveCompare:@"idle"] == NSOrderedSame)
+            continue;
+        for (int i = 0; i < m.prof && i < 40; i++) [t appendString:@"  "];
+        [t appendString:m.nom];
+        [t appendString:@"\n"];
+    }
+    [gMWTexte setString:t];
+    [gMWTexte scrollRangeToVisible:NSMakeRange([t length], 0)];
+    [gMWTexte display];
+    gMWDernier = [NSDate timeIntervalSinceReferenceDate];
+}
+
+@implementation HCMessageWatcherCible
+- (void)redessine:(id)x { (void)x; hcv_mw_dessine(); }
+- (void)caseChangee:(id)x { (void)x; hcv_mw_dessine(); }
+@end
+
+/* Au plus dix fois par seconde pendant qu'un script tourne ; le reste au
+ * prochain tour de la boucle d'événements, quand le script a fini. */
+static void hcv_mw_plus_tard(void)
+{
+    NSTimeInterval now = [NSDate timeIntervalSinceReferenceDate];
+    if (now - gMWDernier >= 0.1) { hcv_mw_dessine(); return; }
+    if (gMWPrevu) return;
+    gMWPrevu = YES;
+    [gMWCible performSelector:@selector(redessine:) withObject:nil afterDelay:0.1];
+}
+
+static void cocoa_message_vu(int ident, const char *message, Object *cible,
+                             int prof, int pris)
+{
+    (void)cible;
+    if (!gMWPanel || ![gMWPanel isVisible] || !message) return;
+    if (pris < 0) {
+        HCMessageVu *m = [[HCMessageVu alloc] init];
+        m.ident = ident;
+        m.prof = prof;
+        m.pris = -1;
+        m.nom = hcv_texte(message);
+        [gMWListe addObject:m];
+        if ([gMWListe count] > HCV_MW_MAX)
+            [gMWListe removeObjectsInRange:NSMakeRange(0, [gMWListe count] - HCV_MW_MAX)];
+    } else {
+        /* Du plus récent au plus ancien : le retour suit de près le départ. */
+        for (NSInteger i = (NSInteger)[gMWListe count] - 1; i >= 0; i--)
+            if (gMWListe[(NSUInteger)i].ident == ident) {
+                gMWListe[(NSUInteger)i].pris = pris;
+                break;
+            }
+    }
+    hcv_mw_plus_tard();
+}
+
+static void hcv_mw_installe(void)
+{
+    if (gMWPanel) return;
+    gMWListe = [NSMutableArray array];
+    gMWCible = [[HCMessageWatcherCible alloc] init];
+    gMWPanel = [[NSPanel alloc]
+        initWithContentRect:NSMakeRect(40, 140, 240, 220)
+                  styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
+                             NSWindowStyleMaskResizable | NSWindowStyleMaskUtilityWindow)
+                    backing:NSBackingStoreBuffered
+                      defer:NO];
+    [gMWPanel setTitle:@"Message Watcher"];
+    [gMWPanel setReleasedWhenClosed:NO];
+    [gMWPanel setFloatingPanel:YES];
+    [gMWPanel setHidesOnDeactivate:YES];
+    NSView *v = [gMWPanel contentView];
+
+    gMWCacheInutiles = [NSButton checkboxWithTitle:@"Hide unused messages"
+                                            target:gMWCible
+                                            action:@selector(caseChangee:)];
+    [gMWCacheInutiles setFrame:NSMakeRect(6, 196, 160, 20)];
+    [gMWCacheInutiles setState:NSControlStateValueOn];
+    [gMWCacheInutiles setAutoresizingMask:NSViewMinYMargin];
+    [v addSubview:gMWCacheInutiles];
+
+    gMWCacheIdle = [NSButton checkboxWithTitle:@"Hide idle"
+                                        target:gMWCible
+                                        action:@selector(caseChangee:)];
+    [gMWCacheIdle setFrame:NSMakeRect(166, 196, 74, 20)];
+    [gMWCacheIdle setState:NSControlStateValueOff];
+    [gMWCacheIdle setAutoresizingMask:NSViewMinYMargin];
+    [v addSubview:gMWCacheIdle];
+
+    NSScrollView *sc = [[NSScrollView alloc] initWithFrame:NSMakeRect(0, 0, 240, 192)];
+    [sc setHasVerticalScroller:YES];
+    [sc setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
+    gMWTexte = [[NSTextView alloc] initWithFrame:[[sc contentView] bounds]];
+    [gMWTexte setEditable:NO];
+    [gMWTexte setFont:[NSFont fontWithName:@"Monaco" size:10]];
+    [gMWTexte setAutoresizingMask:NSViewWidthSizable];
+    [sc setDocumentView:gMWTexte];
+    [v addSubview:sc];
+}
+
+/* Montrer ou cacher : le menu Tools, et « show window "Message Watcher" ». */
+static void hcv_mw_montre(BOOL oui)
+{
+    if (oui) {
+        hcv_mw_installe();
+        [gMWPanel orderFront:nil];
+        hcv_mw_dessine();
+    } else if (gMWPanel) {
+        [gMWPanel orderOut:nil];
+    }
+}
+
 /* ═══ LA PALETTE NAVIGATOR ════════════════════════════════════════════════
  *
  * « palette navigator » : la palette d'HyperCard 2, son dessin au point
@@ -6093,6 +6259,20 @@ static int cocoa_fenetre(const char *nom, const char *quoi, const char *prop,
 {
     if (nom && quoi && hcv_palette_hc_nom(nom))
         return hcv_palette_fenetre(nom, quoi, prop, valeur, out, outlen);
+    /* « show window "Message Watcher" », « hide window … ». NON MESURÉ : si
+     * HyperCard l'acceptait ainsi, et ses autres propriétés. */
+    if (nom && quoi && strcasecmp(nom, "Message Watcher") == 0) {
+        if (!strcmp(quoi, "existe")) return 1;
+        if (!strcmp(quoi, "montre")) { hcv_mw_montre(YES); return 1; }
+        if (!strcmp(quoi, "cache"))  { hcv_mw_montre(NO);  return 1; }
+        if (!strcmp(quoi, "lit") && prop && !strcasecmp(prop, "visible")) {
+            if (out && outlen > 0)
+                snprintf(out, (size_t)outlen, "%s",
+                         (gMWPanel && [gMWPanel isVisible]) ? "true" : "false");
+            return 1;
+        }
+        return -1;
+    }
     if (!nom || !quoi || strcasecmp(nom, "Navigator") != 0) return 0;
     if (!strcmp(quoi, "palette")) {
         nav_ouvre(valeur);
@@ -10722,6 +10902,7 @@ static void hcv_survol(HCView *v, Object *carte)
     host.click_at      = cocoa_click_at;
     host.click_twice_at = cocoa_click_twice_at;
     host.debug_pause   = cocoa_debug_pause;
+    host.message_vu    = cocoa_message_vu;
     host.type_text     = cocoa_type_text;
     host.visual_effect = cocoa_visual_effect;
     host.idle          = cocoa_idle;
@@ -10916,6 +11097,7 @@ static NSTextField  *gSprayDensityLabel = nil;
         case 3: if (!gWidthPanel)   { [self installWidthPalette];   return; } p = gWidthPanel;   break;
         case 4: if (!gBrushPanel)   { [self installBrushPalette];   return; } p = gBrushPanel;   break;
         case 5: if (!gMsgPanel)     { [self installMessageBox];     return; } p = gMsgPanel;     break;
+        case 6: hcv_mw_montre(!(gMWPanel && [gMWPanel isVisible])); return;
         default: return;
     }
     if ([p isVisible]) [p orderOut:nil];
@@ -10937,6 +11119,7 @@ static NSTextField  *gSprayDensityLabel = nil;
         case 3: return gWidthPanel   && [gWidthPanel isVisible];
         case 4: return gBrushPanel   && [gBrushPanel isVisible];
         case 5: return gMsgPanel     && [gMsgPanel isVisible];
+        case 6: return gMWPanel      && [gMWPanel isVisible];
     }
     return NO;
 }
