@@ -125,6 +125,25 @@ sh "$HC/tiers/wamr_compile.sh" "$TRAVAIL/obj_wamr" || { echo " — ÉCHEC"; exit
 echo ' fait'
 
 . "$ICI/arguments.sh"   # la table des arguments, partagée avec releve.sh
+. "$ICI/delai.sh"       # $DELAI, le délai portable, partagé avec releve.sh
+
+# L'ÉDITEUR DE LIENS CONNAÎT-IL --wrap ? Sondé une fois, parce que la réponse
+# décide si un harnais qui en a besoin est un ÉCHEC ou un ÉCART.
+#
+# `--wrap` est du ld de GNU ; celui d'Apple le refuse net (« unknown options:
+# --wrap=malloc »). oomcopie intercepte ainsi malloc, calloc et realloc pour
+# refuser une allocation choisie : sur macOS, il ne peut donc pas se lier du
+# tout. Laissé tel quel, il rendait « NE COMPILE PAS » et rougissait toute la
+# suite, ce qui dit « quelque chose est cassé ici » d'une limite de la
+# plateforme — le même mensonge que le `timeout` absent. Là où --wrap MARCHE,
+# l'échec reste un échec : un harnais qui cesse sans bruit de se construire
+# sous Linux doit encore se faire entendre.
+WRAP=non
+if printf 'int main(void){return 0;}\n' |
+   cc -Wl,--wrap=malloc -x c - -o "$TRAVAIL/.sonde_wrap" 2>/dev/null; then
+  WRAP=oui
+fi
+rm -f "$TRAVAIL/.sonde_wrap"
 
 ok=0; rate=0; neuf=0; saute=0; chrono=0
 cd "$ICI"
@@ -137,6 +156,11 @@ for src in harnais/*.c; do
   # et realloc par --wrap afin de refuser une allocation choisie : le noyau
   # n'en sait rien, aucune ligne de production ne porte la sonde.
   LIEN=$(sed -n 's|^/\* lance-lien : \(.*\) \*/$|\1|p' "$src" | head -n 1)
+  if [ "$WRAP" = non ]; then
+    case "$LIEN" in
+      *--wrap*) echo "  ÉCARTÉ (pas de --wrap)  $n"; saute=$((saute+1)); continue ;;
+    esac
+  fi
   if ! cc $CFLAGS -o "$TRAVAIL/bin/$n" "$src" "$TRAVAIL"/obj/*.o "$TRAVAIL"/obj_wamr/*.o -lm -lz -lpthread $LIEN 2>/dev/null; then
     echo "  NE COMPILE PAS  $n"; rate=$((rate+1)); continue
   fi
@@ -177,7 +201,7 @@ for src in harnais/*.c; do
   # 300 laisse de la marge sans rien cacher : une vraie boucle infinie se fait
   # toujours prendre, et les 248 autres harnais tournent en moins d'une
   # seconde chacun — le délai ne coûte donc rien tant que rien ne se bloque.
-  timeout 300 "$TRAVAIL/bin/$n" $ARGS > "$TRAVAIL/sortie/$n" 2>&1 < /dev/null
+  $DELAI 300 "$TRAVAIL/bin/$n" $ARGS > "$TRAVAIL/sortie/$n" 2>&1 < /dev/null
   code=$?
   # UN PLANTAGE N'EST PAS UN DÉPASSEMENT DE DÉLAI.
   #
