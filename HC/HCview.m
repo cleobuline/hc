@@ -5821,7 +5821,7 @@ static void hcv_mw_installe(void)
     gMWListe = [NSMutableArray array];
     gMWCible = [[HCMessageWatcherCible alloc] init];
     gMWPanel = [[NSPanel alloc]
-        initWithContentRect:NSMakeRect(40, 140, 240, 220)
+        initWithContentRect:NSMakeRect(40, 140, 280, 220)
                   styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
                              NSWindowStyleMaskResizable | NSWindowStyleMaskUtilityWindow)
                     backing:NSBackingStoreBuffered
@@ -5835,7 +5835,7 @@ static void hcv_mw_installe(void)
     gMWCacheInutiles = [NSButton checkboxWithTitle:@"Hide unused messages"
                                             target:gMWCible
                                             action:@selector(caseChangee:)];
-    [gMWCacheInutiles setFrame:NSMakeRect(6, 196, 160, 20)];
+    [gMWCacheInutiles setFrame:NSMakeRect(6, 196, 172, 20)];
     [gMWCacheInutiles setState:NSControlStateValueOn];
     [gMWCacheInutiles setAutoresizingMask:NSViewMinYMargin];
     [v addSubview:gMWCacheInutiles];
@@ -5843,12 +5843,12 @@ static void hcv_mw_installe(void)
     gMWCacheIdle = [NSButton checkboxWithTitle:@"Hide idle"
                                         target:gMWCible
                                         action:@selector(caseChangee:)];
-    [gMWCacheIdle setFrame:NSMakeRect(166, 196, 74, 20)];
+    [gMWCacheIdle setFrame:NSMakeRect(180, 196, 96, 20)];
     [gMWCacheIdle setState:NSControlStateValueOff];
     [gMWCacheIdle setAutoresizingMask:NSViewMinYMargin];
     [v addSubview:gMWCacheIdle];
 
-    NSScrollView *sc = [[NSScrollView alloc] initWithFrame:NSMakeRect(0, 0, 240, 192)];
+    NSScrollView *sc = [[NSScrollView alloc] initWithFrame:NSMakeRect(0, 0, 280, 192)];
     [sc setHasVerticalScroller:YES];
     [sc setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
     gMWTexte = [[NSTextView alloc] initWithFrame:[[sc contentView] bounds]];
