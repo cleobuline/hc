@@ -1,18 +1,18 @@
 [v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
 == 1. non posée : rien ne change ==
      commande
-      [ERR]    !! un nombre est attendu ici (v3, ligne 13 de button "B".plante)
-      [DIALOGUE]    !! un nombre est attendu ici (v3, ligne 13 de button "B".plante)
+      [ERR]    !! Expected number here. (v3, ligne 13 de button "B".plante)
+      [DIALOGUE]    !! Expected number here. (v3, ligne 13 de button "B".plante)
 ligne 13 :  get "abc" + 1
       journal : 1 avant / 2 dans plante / 3 après plante
      fonction
-      [ERR]    !! un nombre est attendu ici (v3, ligne 25 de button "B".f)
-      [DIALOGUE]    !! un nombre est attendu ici (v3, ligne 25 de button "B".f)
+      [ERR]    !! Expected number here. (v3, ligne 25 de button "B".f)
+      [DIALOGUE]    !! Expected number here. (v3, ligne 25 de button "B".f)
 ligne 25 :  get "abc" + 1
       journal : 1 avant / 2 dans f / 3 après f, it=[]
      parDo
-      [ERR]    !! un nombre est attendu ici (v3, ligne 37 de button "B".faitDo)
-      [DIALOGUE]    !! un nombre est attendu ici (v3, ligne 37 de button "B".faitDo)
+      [ERR]    !! Expected number here. (v3, ligne 37 de button "B".faitDo)
+      [DIALOGUE]    !! Expected number here. (v3, ligne 37 de button "B".faitDo)
 ligne 37 :  do "get " & quote & "abc" & quote & " + 1"
       journal : 1 avant / 3 après faitDo
 
@@ -26,51 +26,51 @@ ligne 37 :  do "get " & quote & "abc" & quote & " + 1"
       journal : 1 / 2 après la ligne sautée
      set the skipErrors to true
   commande
-      [ERR]    !! un nombre est attendu ici (v3, ligne 14 de button "B".plante, sautée)
+      [ERR]    !! Expected number here. (v3, ligne 14 de button "B".plante, sautée)
       journal : 1 avant / 2 dans plante / 2b après l'erreur / 3 après plante
      set the skipErrors to true
   fonction
-      [ERR]    !! un nombre est attendu ici (v3, ligne 26 de button "B".f, sautée)
+      [ERR]    !! Expected number here. (v3, ligne 26 de button "B".f, sautée)
       journal : 1 avant / 2 dans f / 2b après l'erreur / 3 après f, it=[rendu]
      set the skipErrors to true
   parDo
-      [ERR]    !! un nombre est attendu ici (v3, ligne 38 de button "B".faitDo, sautée)
+      [ERR]    !! Expected number here. (v3, ligne 38 de button "B".faitDo, sautée)
       journal : 1 avant / 2b après le do / 3 après faitDo
 
 == 3. false : tout s'arrête, comme HyperCard ==
      set the skipErrors to false
   commande
-      [ERR]    !! un nombre est attendu ici (v3, ligne 14 de button "B".plante)
-      [DIALOGUE]    !! un nombre est attendu ici (v3, ligne 14 de button "B".plante)
+      [ERR]    !! Expected number here. (v3, ligne 14 de button "B".plante)
+      [DIALOGUE]    !! Expected number here. (v3, ligne 14 de button "B".plante)
 ligne 14 :  get "abc" + 1
       journal : 1 avant / 2 dans plante
      set the skipErrors to false
   fonction
-      [ERR]    !! un nombre est attendu ici (v3, ligne 26 de button "B".f)
-      [DIALOGUE]    !! un nombre est attendu ici (v3, ligne 26 de button "B".f)
+      [ERR]    !! Expected number here. (v3, ligne 26 de button "B".f)
+      [DIALOGUE]    !! Expected number here. (v3, ligne 26 de button "B".f)
 ligne 26 :  get "abc" + 1
       journal : 1 avant / 2 dans f
      set the skipErrors to false
   parDo
-      [ERR]    !! un nombre est attendu ici (v3, ligne 38 de button "B".faitDo)
-      [DIALOGUE]    !! un nombre est attendu ici (v3, ligne 38 de button "B".faitDo)
+      [ERR]    !! Expected number here. (v3, ligne 38 de button "B".faitDo)
+      [DIALOGUE]    !! Expected number here. (v3, ligne 38 de button "B".faitDo)
 ligne 38 :  do "get " & quote & "abc" & quote & " + 1"
       journal : 1 avant
 
 == 4. une chaîne de trois niveaux ==
      trois
-      [ERR]    !! un nombre est attendu ici (v3, ligne 55 de button "B".niveauC)
-      [DIALOGUE]    !! un nombre est attendu ici (v3, ligne 55 de button "B".niveauC)
+      [ERR]    !! Expected number here. (v3, ligne 55 de button "B".niveauC)
+      [DIALOGUE]    !! Expected number here. (v3, ligne 55 de button "B".niveauC)
 ligne 55 :  get "abc" + 1
       journal : a / b / c / b après c / a après b
      set the skipErrors to true
   trois
-      [ERR]    !! un nombre est attendu ici (v3, ligne 56 de button "B".niveauC, sautée)
+      [ERR]    !! Expected number here. (v3, ligne 56 de button "B".niveauC, sautée)
       journal : a / b / c / c après l'erreur / b après c / a après b
      set the skipErrors to false
   trois
-      [ERR]    !! un nombre est attendu ici (v3, ligne 56 de button "B".niveauC)
-      [DIALOGUE]    !! un nombre est attendu ici (v3, ligne 56 de button "B".niveauC)
+      [ERR]    !! Expected number here. (v3, ligne 56 de button "B".niveauC)
+      [DIALOGUE]    !! Expected number here. (v3, ligne 56 de button "B".niveauC)
 ligne 56 :  get "abc" + 1
       journal : a / b / c
 
@@ -98,6 +98,6 @@ ligne 3 :  set the skipErrors to "peut-être"
      set the lockErrorDialogs to true
   set the skipErrors to false
   commande
-      [ERR]    !! un nombre est attendu ici (v3, ligne 15 de button "B".plante)
-      errorDialog a reçu :    !! un nombre est attendu ici (v3, ligne 15 de button "B".plante)
+      [ERR]    !! Expected number here. (v3, ligne 15 de button "B".plante)
+      errorDialog a reçu :    !! Expected number here. (v3, ligne 15 de button "B".plante)
       journal : 1 avant / 2 dans plante

@@ -74,13 +74,13 @@
    put the sqrt of ""
       0
    put the sqrt of "abc"
-      [ERR]    !! un nombre est attendu ici (v3, ligne 5 de button "B1".t)
+      [ERR]    !! Expected number here. (v3, ligne 5 de button "B1".t)
    put the charToNum of ("a")
       97
    put the sqrt of 4 + 1
       3
    put the offset of "a"
-      [ERR]    !! mauvais nombre d'arguments : offset (v3, ligne 5 de button "B1".t)
+      [ERR]    !! Can't understand arguments of "offset". (v3, ligne 5 de button "B1".t)
 
 == 3. une fonction de la pile sous la forme « the » ==
    put the maF of "ok"
@@ -101,31 +101,31 @@
 
 == 4. un argument de moins ==
    put "[" & length() & "]"
-      [ERR]    !! mauvais nombre d'arguments : length (v3, ligne 5 de button "B1".t)
+      [ERR]    !! Can't understand arguments of "length". (v3, ligne 5 de button "B1".t)
    put "[" & numToChar() & "]"
-      [ERR]    !! mauvais nombre d'arguments : numToChar (v3, ligne 5 de button "B1".t)
+      [ERR]    !! Can't understand arguments of "numToChar". (v3, ligne 5 de button "B1".t)
    put "[" & charToNum() & "]"
-      [ERR]    !! mauvais nombre d'arguments : charToNum (v3, ligne 5 de button "B1".t)
+      [ERR]    !! Can't understand arguments of "charToNum". (v3, ligne 5 de button "B1".t)
    put "[" & offset() & "]"
-      [ERR]    !! mauvais nombre d'arguments : offset (v3, ligne 5 de button "B1".t)
+      [ERR]    !! Can't understand arguments of "offset". (v3, ligne 5 de button "B1".t)
    put "[" & offset("a") & "]"
-      [ERR]    !! mauvais nombre d'arguments : offset (v3, ligne 5 de button "B1".t)
+      [ERR]    !! Can't understand arguments of "offset". (v3, ligne 5 de button "B1".t)
    put "[" & random() & "]"
-      [ERR]    !! mauvais nombre d'arguments : random (v3, ligne 5 de button "B1".t)
+      [ERR]    !! Can't understand arguments of "random". (v3, ligne 5 de button "B1".t)
    put "[" & sqrt() & "]"
-      [ERR]    !! mauvais nombre d'arguments : sqrt (v3, ligne 5 de button "B1".t)
+      [ERR]    !! Can't understand arguments of "sqrt". (v3, ligne 5 de button "B1".t)
    put "[" & value() & "]"
-      [ERR]    !! mauvais nombre d'arguments : value (v3, ligne 5 de button "B1".t)
+      [ERR]    !! Can't understand arguments of "value". (v3, ligne 5 de button "B1".t)
    put "[" & annuity(1) & "]"
-      [ERR]    !! mauvais nombre d'arguments : annuity (v3, ligne 5 de button "B1".t)
+      [ERR]    !! Can't understand arguments of "annuity". (v3, ligne 5 de button "B1".t)
 
 == 5. un argument de trop ==
    put "[" & length(1,2) & "]"
-      [ERR]    !! mauvais nombre d'arguments : length (v3, ligne 5 de button "B1".t)
+      [ERR]    !! Can't understand arguments of "length". (v3, ligne 5 de button "B1".t)
    put "[" & charToNum("a","b") & "]"
-      [ERR]    !! mauvais nombre d'arguments : charToNum (v3, ligne 5 de button "B1".t)
+      [ERR]    !! Can't understand arguments of "charToNum". (v3, ligne 5 de button "B1".t)
    put "[" & sqrt(4,9) & "]"
-      [ERR]    !! mauvais nombre d'arguments : sqrt (v3, ligne 5 de button "B1".t)
+      [ERR]    !! Can't understand arguments of "sqrt". (v3, ligne 5 de button "B1".t)
 
 == 6. un argument vide, ou qui n'est pas un nombre ==
    put "[" & sqrt("") & "]"
@@ -135,16 +135,16 @@
    put "[" & annuity("","") & "]"
       [0]
    put "[" & sqrt("abc") & "]"
-      [ERR]    !! un nombre est attendu ici (v3, ligne 5 de button "B1".t)
+      [ERR]    !! Expected number here. (v3, ligne 5 de button "B1".t)
    put "[" & exp2("x") & "]"
-      [ERR]    !! un nombre est attendu ici (v3, ligne 5 de button "B1".t)
+      [ERR]    !! Expected number here. (v3, ligne 5 de button "B1".t)
    put "[" & numToChar("x") & "]"
-      [ERR]    !! un nombre est attendu ici (v3, ligne 5 de button "B1".t)
+      [ERR]    !! Expected number here. (v3, ligne 5 de button "B1".t)
    -- la regle qu'elles suivent, celle de l'arithmetique
    put "[" & (empty + 1) & "]"
       [1]
    put "[" & ("abc" + 1) & "]"
-      [ERR]    !! un nombre est attendu ici (v3, ligne 5 de button "B1".t)
+      [ERR]    !! Expected number here. (v3, ligne 5 de button "B1".t)
 
 == 7. la ou l'ancien moteur se trompait ==
    -- il repetait l'erreur de la v3 :

@@ -1180,7 +1180,7 @@ static void commande(HctExec *x, const HctNoeud *n)
 
         double xv, xc, r = 0;
         if (!nombre_de_val(val, &xv) || !nombre_de_val(act, &xc)) {
-            hct_ctx_faute(&x->ctx, n, "un nombre est attendu ici");
+            hct_ctx_faute(&x->ctx, n, "Expected number here.");
             hct_val_libere(&val); hct_val_libere(&act);
             return;
         }

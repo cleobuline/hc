@@ -185,11 +185,11 @@ static HctValeur arith(HctContexte *ctx, const HctNoeud *n, const char *op,
      * Un texte non vide et non numerique reste une faute : c'est la difference
      * entre une case laissee blanche et une donnee erronee. */
     if (!est_vide(a.txt) && !hct_est_nombre(a.txt)) {
-        hct_ctx_faute(ctx, n, "un nombre est attendu ici");
+        hct_ctx_faute(ctx, n, "Expected number here.");
         return hct_val_vide();
     }
     if (!est_vide(b.txt) && !hct_est_nombre(b.txt)) {
-        hct_ctx_faute(ctx, n, "un nombre est attendu ici");
+        hct_ctx_faute(ctx, n, "Expected number here.");
         return hct_val_vide();
     }
     /* LE SEUL ENDROIT QUI REGARDE LE NOMBRE BRUT.
@@ -272,14 +272,14 @@ static HctValeur arith(HctContexte *ctx, const HctNoeud *n, const char *op,
     }
     else if (!strcmp(op, "div")) {
         if (y == 0) {
-            hct_ctx_faute(ctx, n, "division entière par zéro");
+            hct_ctx_faute(ctx, n, "can't div by zero");
             return hct_val_vide();
         }
         r = trunc(x / y);
     }
     else if (!strcmp(op, "mod")) {
         if (y == 0) {
-            hct_ctx_faute(ctx, n, "modulo par zéro");
+            hct_ctx_faute(ctx, n, "can't mod by 0");
             return hct_val_vide();
         }
         r = fmod(x, y);
@@ -612,12 +612,12 @@ static HctValeur unaire(HctContexte *ctx, const HctNoeud *n)
         } else r = hct_val_bool(!v);
     } else if (!strcmp(op, "neg")) {
         if (!hct_est_nombre(a.txt)) {
-            hct_ctx_faute(ctx, n->fils[0], "un nombre est attendu ici");
+            hct_ctx_faute(ctx, n->fils[0], "Expected number here.");
             r = hct_val_vide();
         } else r = hct_val_calcul(-nombre_de(a));
     } else {
         if (!hct_est_nombre(a.txt)) {
-            hct_ctx_faute(ctx, n->fils[0], "un nombre est attendu ici");
+            hct_ctx_faute(ctx, n->fils[0], "Expected number here.");
             r = hct_val_vide();
         } else r = hct_val_calcul(-nombre_de(a));
     }
@@ -860,7 +860,7 @@ static HctValeur appel_valeurs(HctContexte *ctx, const HctNoeud *n,
      * une. */
     int arite = arite_integree(nom);
     if (arite && nargs != arite) {
-        hct_ctx_faute_nom(ctx, n, "mauvais nombre d'arguments", nom);
+        hct_ctx_faute_txt(ctx, n, "Can't understand arguments of \"%s\".", nom);
         for (int i = 0; i < nargs; i++) hct_val_libere(&args[i]);
         free(args); free(nom);
         return hct_val_vide();
@@ -884,7 +884,7 @@ static HctValeur appel_valeurs(HctContexte *ctx, const HctNoeud *n,
                 args[i] = hct_val_nombre(0);
                 continue;
             }
-            hct_ctx_faute(ctx, n, "un nombre est attendu ici");
+            hct_ctx_faute(ctx, n, "Expected number here.");
             for (int k = 0; k < nargs; k++) hct_val_libere(&args[k]);
             free(args); free(nom);
             return hct_val_vide();
