@@ -5,13 +5,13 @@
    true
    false
 === 2. SANS la serrure : l'hôte ouvre son dialogue ===
-   [ERR]    !! propriété inconnue (v3, ligne 5 de stack "Verrou".essai)
-   [DIALOGUE HÔTE]    !! propriété inconnue (v3, ligne 5 de stack "Verrou".essai)
+   [ERR]    !! Can't understand arguments of "put". (v3, ligne 5 de stack "Verrou".essai)
+   [DIALOGUE HÔTE]    !! Can't understand arguments of "put". (v3, ligne 5 de stack "Verrou".essai)
 ligne 5 :  put the zorglub of this card
 === 3. AVEC la serrure : le gestionnaire prend l'erreur ===
    (et l'hôte doit se taire — s'il parle, rien n'a été détourné)
-   [ERR]    !! propriété inconnue (v3, ligne 6 de stack "Verrou".essai)
-   MON gestionnaire a reçu :    !! propriété inconnue (v3, ligne 6 de stack "Verrou".essai)
+   [ERR]    !! Can't understand arguments of "put". (v3, ligne 6 de stack "Verrou".essai)
+   MON gestionnaire a reçu :    !! Can't understand arguments of "put". (v3, ligne 6 de stack "Verrou".essai)
 === 4. la serrure s'ÉTEINT en retombant au repos ===
    (HypoGraph la pose et ne la retire jamais ; sans cette remise
     à zéro tout le reste de la session partirait en errorDialog,
@@ -20,10 +20,10 @@ ligne 5 :  put the zorglub of this card
 === 5. LE PIÈGE : errorDialog qui tombe lui-même en erreur ===
    (sans garde-fou il s'enverrait à errorDialog, sans fin. On
     repasse par le dialogue ordinaire pendant son exécution)
-   [ERR]    !! propriété inconnue (v3, ligne 7 de stack "Verrou".essai)
-   errorDialog a reçu :    !! propriété inconnue (v3, ligne 7 de stack "Verrou".essai)
-   [ERR]    !! propriété inconnue (v3, ligne 3 de stack "Verrou".errorDialog)
-   [DIALOGUE HÔTE]    !! propriété inconnue (v3, ligne 3 de stack "Verrou".errorDialog)
+   [ERR]    !! Can't understand arguments of "put". (v3, ligne 7 de stack "Verrou".essai)
+   errorDialog a reçu :    !! Can't understand arguments of "put". (v3, ligne 7 de stack "Verrou".essai)
+   [ERR]    !! Can't understand arguments of "put". (v3, ligne 3 de stack "Verrou".errorDialog)
+   [DIALOGUE HÔTE]    !! Can't understand arguments of "put". (v3, ligne 3 de stack "Verrou".errorDialog)
 ligne 3 :  put the patatras of this card
 === 6. serrure posée, AUCUN gestionnaire : on ne remet pas le
        dialogue, mais on ne se tait pas non plus ===
@@ -31,7 +31,7 @@ ligne 3 :  put the patatras of this card
     viderait la propriété de son sens. Mais une pile qui pose la
     serrure sans écrire le gestionnaire deviendrait aveugle, et
     rien ne lui dirait pourquoi)
-   [ERR]    !! propriété inconnue (v3, ligne 3 de stack "Verrou".essai)
+   [ERR]    !! Can't understand arguments of "put". (v3, ligne 3 de stack "Verrou".essai)
    [ERR]    !! lockErrorDialogs est posé et aucun gestionnaire « on errorDialog » n'a pris l'erreur
 === 7. le cas de HypoGraph, bout à bout ===
    (son errorDialog appelle « answer », qu'aucun hôte ne sert ici ;

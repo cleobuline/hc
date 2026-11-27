@@ -29,15 +29,15 @@ c
    []
 ── rang non numérique : lecture, écriture, suppression
 ── lecture
-   [ERR]    !! un rang numérique est attendu ici (v3, ligne 4 de button "B".t)
+   [ERR]    !! Expected integer here. (v3, ligne 4 de button "B".t)
 ── écriture
-   [ERR]    !! un rang numérique est attendu ici (v3, ligne 4 de button "B".t)
+   [ERR]    !! Expected integer here. (v3, ligne 4 de button "B".t)
 ── suppression
-   [ERR]    !! un rang numérique est attendu ici (v3, ligne 4 de button "B".t)
+   [ERR]    !! Expected integer here. (v3, ligne 4 de button "B".t)
 ── char, écriture
-   [ERR]    !! un rang numérique est attendu ici (v3, ligne 4 de button "B".t)
+   [ERR]    !! Expected integer here. (v3, ligne 4 de button "B".t)
 ── vide
-   [ERR]    !! un rang numérique est attendu ici (v3, ligne 4 de button "B".t)
+   [ERR]    !! Expected integer here. (v3, ligne 4 de button "B".t)
 ── un vrai rang marche toujours
    a,X,c
 ── param démesuré

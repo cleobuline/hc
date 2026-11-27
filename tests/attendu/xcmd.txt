@@ -270,7 +270,7 @@
    send "inconnu" to window "Essai"
       = xSendEvt « inconnu »
    send "dessine" to window "Absente"
-      [ERR]    !! fenêtre introuvable : Absente
+      [ERR]    !! No such window.
    send "guette" to window "Essai"
       = xSendEvt « guette »
       = Button a dit oui ; tours avant : 1

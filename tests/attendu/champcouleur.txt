@@ -31,7 +31,7 @@
    set the hiliteColor of card field 1 to red
       [ERR]    !! propriété inconnue : hiliteColor
    put the hiliteColor of card field 1
-      [ERR]    !! propriété inconnue (v3, ligne 1)
+      [ERR]    !! Can't understand arguments of "put". (v3, ligne 1)
    set the textColor of word 1 of card field 1 to blue
    put the textColor of word 1 of card field 1
       = 0,0,255

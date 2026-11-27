@@ -11,15 +11,15 @@
 
 == 2. la fonction est INCONNUE : un refus qui la nomme ==
    inconnue, un argument
-      [ERR]    !! fonction inconnue : pasLa (v3, ligne 8 de button "B".essaie)
+      [ERR]    !! Can't understand "pasLa". (v3, ligne 8 de button "B".essaie)
    inconnue, deux arguments
-      [ERR]    !! fonction inconnue : pasLaNonPlus (v3, ligne 8 de button "B".essaie)
+      [ERR]    !! Can't understand "pasLaNonPlus". (v3, ligne 8 de button "B".essaie)
    inconnue, sans argument
-      [ERR]    !! fonction inconnue : pasLaDuTout (v3, ligne 8 de button "B".essaie)
+      [ERR]    !! Can't understand "pasLaDuTout". (v3, ligne 8 de button "B".essaie)
 
 == 3. le gestionnaire s'ARRETE : la suite ne tourne pas ==
    la ligne d'apres
-      [ERR]    !! fonction inconnue : pasLa (v3, ligne 8 de button "B".essaie)
+      [ERR]    !! Can't understand "pasLa". (v3, ligne 8 de button "B".essaie)
 
 == 4. une fonction qui rend VIDE reste legitime ==
    rienDuTout(1)

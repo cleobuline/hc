@@ -59,9 +59,9 @@
    [ERR]    !! objet introuvable (v3, ligne 5 de stack "Synonymes".essai)
    masqué : bkgnds
    botright(21) = 42
-   [ERR]    !! objet introuvable (v3, ligne 5 de stack "Synonymes".essai)
+   [ERR]    !! There is no card button 21. (v3, ligne 5 de stack "Synonymes".essai)
    masqué : btn
-   [ERR]    !! objet introuvable (v3, ligne 5 de stack "Synonymes".essai)
+   [ERR]    !! There is no card button 21. (v3, ligne 5 de stack "Synonymes".essai)
    masqué : btns
    [ERR]    !! objet introuvable (v3, ligne 5 de stack "Synonymes".essai)
    masqué : cd
@@ -75,9 +75,9 @@
    [ERR]         put "chars(21) = " & chars(21)
    [ERR]    !! « of » attendu après un morceau (v3, ligne 5 de stack "Synonymes".essai)
    masqué : chars
-   [ERR]    !! objet introuvable (v3, ligne 5 de stack "Synonymes".essai)
+   [ERR]    !! There is no bkgnd field 21. (v3, ligne 5 de stack "Synonymes".essai)
    masqué : fld
-   [ERR]    !! objet introuvable (v3, ligne 5 de stack "Synonymes".essai)
+   [ERR]    !! There is no bkgnd field 21. (v3, ligne 5 de stack "Synonymes".essai)
    masqué : flds
    grey(21) = 42
    hilite(21) = 42

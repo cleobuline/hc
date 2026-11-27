@@ -9328,7 +9328,7 @@ static int v3_recours_corps(void *d, const HctNoeud *n, HctValeur *out,
         char prop[64], nom[256];
         hct_texte(&n->fils[0]->jeton, prop, sizeof prop);
         if (!v3_fenetre_nom(ctx, n->fils[1], nom, sizeof nom)) {
-            if (ctx && !ctx->erreur) hct_ctx_faute(ctx, n, "fenêtre introuvable");
+            if (ctx && !ctx->erreur) hct_ctx_faute(ctx, n, "No such window.");
             g_v1_porte = sauve_porte;
             return 0;
         }
@@ -9343,7 +9343,7 @@ static int v3_recours_corps(void *d, const HctNoeud *n, HctValeur *out,
         }
         ARENA_FREE;
         if (ctx) {
-            if (r == 0) hct_ctx_faute_nom(ctx, n, "fenêtre introuvable", nom);
+            if (r == 0) hct_ctx_faute(ctx, n, "No such window.");
             else        hct_ctx_faute_nom(ctx, n, "propriété de fenêtre inconnue", prop);
         }
         g_v1_porte = sauve_porte;
@@ -9526,7 +9526,7 @@ static int v3_recours_corps(void *d, const HctNoeud *n, HctValeur *out,
          * erreur. Et pas de détour par l'ancien moteur, qui rendait le total
          * de la pile. */
         if (r < 0) {
-            if (ctx) hct_ctx_faute(ctx, n, "objet introuvable");
+            if (ctx) hct_ctx_faute_objet(ctx, n);
             g_v1_porte = sauve_porte;
             return 0;
         }
@@ -11715,7 +11715,7 @@ static int select_cible(HctContexte *ctx, const HctNoeud *c,
              * nombre, pas seulement quelque chose que strtod avale. */
             if (!hct_est_nombre(b1)) {
                 hct_ctx_faute(ctx, c->fils[0],
-                              "un rang numérique est attendu ici");
+                              "Expected integer here.");
                 { ARENA_FREE; return 0; }
             }
             n1 = hct_vers_rang(b1, &hors);
@@ -11727,7 +11727,7 @@ static int select_cible(HctContexte *ctx, const HctNoeud *c,
                 if (ctx->erreur) { ARENA_FREE; return 0; }
                 if (!hct_est_nombre(b2)) {
                     hct_ctx_faute(ctx, c->fils[1],
-                                  "un rang numérique est attendu ici");
+                                  "Expected integer here.");
                     { ARENA_FREE; return 0; }
                 }
                 n2 = hct_vers_rang(b2, &hors);
@@ -13155,7 +13155,7 @@ static int v3_cmd_send(HctContexte *ctx, const HctNoeud *n)
         n->fils[2]->typeobj == HCT_OBJ_WINDOW) {
         char nom[256];
         if (!v3_fenetre_nom(ctx, n->fils[2], nom, sizeof nom)) {
-            if (!ctx->erreur) emit(HC_ERR, "   !! fenêtre introuvable");
+            if (!ctx->erreur) emit(HC_ERR, "   !! No such window.");
             ARENA_FREE;
             return 1;
         }
@@ -13163,7 +13163,7 @@ static int v3_cmd_send(HctContexte *ctx, const HctNoeud *n)
         int r = v3_fenetre_hote(nom, "envoie", NULL, skip_spaces(msgline),
                                 NULL, 0);
         if (r == 0) {
-            emit(HC_ERR, "   !! fenêtre introuvable : %s", nom);
+            emit(HC_ERR, "   !! No such window.");
             set_result("No such window");
         } else if (r < 0) {
             emit(HC_ERR, "   !! la fenêtre « %s » ne reçoit pas de message", nom);
@@ -13361,7 +13361,7 @@ static Object *v3_chunk_cible(HctContexte *ctx, const HctNoeud *ch,
             int hors = 0;
             if (!hct_est_nombre(v)) {
                 hct_ctx_faute(ctx, ch->fils[0],
-                              "un rang numérique est attendu ici");
+                              "Expected integer here.");
                 return NULL;
             }
             a = hct_vers_rang(v, &hors);
@@ -13375,7 +13375,7 @@ static Object *v3_chunk_cible(HctContexte *ctx, const HctNoeud *ch,
             int hors = 0;
             if (!hct_est_nombre(v)) {
                 hct_ctx_faute(ctx, ch->fils[1],
-                              "un rang numérique est attendu ici");
+                              "Expected integer here.");
                 return NULL;
             }
             b = hct_vers_rang(v, &hors);
@@ -13547,7 +13547,7 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
         char prop[64], nom[256];
         hct_texte(&n->fils[0]->fils[0]->jeton, prop, sizeof prop);
         if (!v3_fenetre_nom(ctx, n->fils[0]->fils[1], nom, sizeof nom)) {
-            if (!ctx->erreur) emit(HC_ERR, "   !! fenêtre introuvable");
+            if (!ctx->erreur) emit(HC_ERR, "   !! No such window.");
             return 1;
         }
         ARENA_MARK;
@@ -13563,7 +13563,7 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
         ARENA_FREE;
         if (r == 1) { set_result(""); return 1; }
         if (r == 0) {
-            emit(HC_ERR, "   !! fenêtre introuvable : %s", nom);
+            emit(HC_ERR, "   !! No such window.");
             set_result("No such window");
         } else {
             emit(HC_ERR, "   !! propriété de fenêtre inconnue : %s", prop);
@@ -15205,12 +15205,12 @@ static int v3_cmd_montre(HctContexte *ctx, const HctNoeud *n)
     if (v3_fenetre_ici(n->fils[0])) {
         char nom[256];
         if (!v3_fenetre_nom(ctx, n->fils[0], nom, sizeof nom)) {
-            if (!ctx->erreur) emit(HC_ERR, "   !! fenêtre introuvable");
+            if (!ctx->erreur) emit(HC_ERR, "   !! No such window.");
             return 1;
         }
         if (v3_fenetre_hote(nom, montrer ? "montre" : "cache",
                             NULL, NULL, NULL, 0) != 1) {
-            emit(HC_ERR, "   !! fenêtre introuvable : %s", nom);
+            emit(HC_ERR, "   !! No such window.");
             set_result("No such window");
             return 1;
         }
@@ -15275,7 +15275,7 @@ static int v3_cmd_montre(HctContexte *ctx, const HctNoeud *n)
                 couche = v3_resout_calcule(ctx, couche_n);
                 if (ctx->erreur) return 1;
                 if (!couche) {
-                    hct_ctx_faute(ctx, couche_n, "objet introuvable");
+                    hct_ctx_faute_objet(ctx, couche_n);
                     return 1;
                 }
             } else {
@@ -16832,11 +16832,11 @@ static int v3_cmd_fichier(HctContexte *ctx, const HctNoeud *n)
         n->fils[0]->genre == HCTN_OBJET && n->fils[0]->typeobj == HCT_OBJ_WINDOW) {
         char nom[256], quoi[64];
         if (!v3_fenetre_nom(ctx, n->fils[0], nom, sizeof nom)) {
-            if (!ctx->erreur) emit(HC_ERR, "   !! fenêtre introuvable");
+            if (!ctx->erreur) emit(HC_ERR, "   !! No such window.");
             return 1;
         }
         if (v3_fenetre_hote(nom, "ferme", NULL, NULL, quoi, sizeof quoi) != 1) {
-            emit(HC_ERR, "   !! fenêtre introuvable : %s", nom);
+            emit(HC_ERR, "   !! No such window.");
             set_result("No such window");
             return 1;
         }
@@ -18110,7 +18110,14 @@ static int v3_commande_corps(void *d, const HctNoeud *n, HctContexte *ctx)
      * n'a pas su se résoudre ; s'il n'est pas dans l'arbre de CETTE commande,
      * il vient d'une ligne précédente et n'explique rien ici. */
     else if (v3_noeud_contient(n, g_objet_manque)) {
-        emit(HC_ERR, "   !! objet introuvable : %s", ligne);
+        /* La phrase d'HyperCard quand on sait l'écrire — mesurée DANS
+         * HYPERCARD le 27 novembre, « hide button "zzz" » dit « There is no
+         * card button "zzz". » ; voir hct_phrase_objet_absent. */
+        char phrase[300];
+        if (hct_phrase_objet_absent(g_objet_manque, phrase, sizeof phrase))
+            emit(HC_ERR, "   !! %s", phrase);
+        else
+            emit(HC_ERR, "   !! objet introuvable : %s", ligne);
         set_result("No such object");
     }
     /* Quelle qu'ait été la conclusion, la ligne suivante repart à neuf. */
@@ -18596,7 +18603,7 @@ static int v3_lit_prop_morceau(void *d, const HctNoeud *morceau,
         Object *ob = base ? hct_resout(ctx, base) : NULL;
         if (ctx->erreur) return 1;
         if (!ob) {
-            hct_ctx_faute(ctx, base ? base : morceau, "objet introuvable");
+            hct_ctx_faute_objet(ctx, base ? base : morceau);
             return 1;
         }
         if (ob->type != OBJ_FIELD) return 0;      /* non mesuré : l'ancien chemin */
@@ -20298,7 +20305,28 @@ void hc_do(const char *line)
         /* PORTE 4 : la boîte de message, « do », les articles de menu créés
          * par script. Jamais empruntée non plus dans la mesure. */
         v1_compte("v1 refusée", "msg/do");
-        emit(HC_ERR, "   !! ne sait pas lire : %s", line);
+        /* UNE LIGNE QUI NE S'ANALYSE PAS, dite comme HyperCard. Mesuré DANS
+         * HYPERCARD (Basilisk II) le 27 novembre, dans la boîte de message :
+         * « put 1 into » dit « Can't understand arguments of "put". ». Un
+         * premier mot qui est un verbe : ses arguments ; sinon, le mot —
+         * « Can't understand "zorglub". », la forme mesurée le 26. NON
+         * MESURÉ : les autres verbes que put, déduits de la même règle. */
+        {
+            const char *m = skip_spaces(line);
+            int k = 0;
+            char verbe[64];
+            while (m[k] && m[k] != ' ' && m[k] != '\t' && k < (int)sizeof verbe - 1) {
+                verbe[k] = m[k];
+                k++;
+            }
+            verbe[k] = '\0';
+            if (k > 0 && v3_verbe_connu(verbe))
+                emit(HC_ERR, "   !! Can't understand arguments of \"%s\".", verbe);
+            else if (k > 0)
+                emit(HC_ERR, "   !! Can't understand \"%s\".", verbe);
+            else
+                emit(HC_ERR, "   !! ne sait pas lire : %s", line);
+        }
     }
     ARENA_FREE;
     g_v1_porte = sauve_porte;

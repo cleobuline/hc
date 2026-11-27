@@ -30,7 +30,7 @@
 
 == 3. ce qui n'est pas un bouton ==
    disable button "Absent"
-      [ERR]    !! objet introuvable : disable button "Absent"
+      [ERR]    !! There is no card button "Absent".
    disable field "Texte"
       [ERR]    !! ne sait pas faire : disable field "Texte"
 

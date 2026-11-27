@@ -6,11 +6,11 @@
 
 ── recois 1, field "pasLa"
    → message "t" à button "B"
-   [ERR]    !! objet introuvable (v3, ligne 2 de button "B".t)
+   [ERR]    !! There is no bkgnd field "pasLa". (v3, ligne 2 de button "B".t)
 
 ── recois field "pasLa", 2
    → message "t" à button "B"
-   [ERR]    !! objet introuvable (v3, ligne 2 de button "B".t)
+   [ERR]    !! There is no bkgnd field "pasLa". (v3, ligne 2 de button "B".t)
 
 ── put 1, field "pasLa"
    → message "t" à button "B"

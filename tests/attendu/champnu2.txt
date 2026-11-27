@@ -53,10 +53,10 @@
    non
 
 ── put field "absent"
-   [ERR]    !! objet introuvable (v3, ligne 3 de button "B".t)
+   [ERR]    !! There is no bkgnd field "absent". (v3, ligne 3 de button "B".t)
 
 ── put the short name of field "absent"
-   [ERR]    !! objet introuvable (v3, ligne 3 de button "B".t)
+   [ERR]    !! There is no bkgnd field "absent". (v3, ligne 3 de button "B".t)
 
 ── put field "surCarte"
    carte

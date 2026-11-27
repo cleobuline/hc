@@ -6,7 +6,7 @@
    — lecture d'une propriété inconnue
      put the zorglub of this card
    avant
-   [ERR]    !! propriété inconnue (v3, ligne 3 de stack "Arret".essai)
+   [ERR]    !! Can't understand arguments of "put". (v3, ligne 3 de stack "Arret".essai)
 === 2. GENRE 1 : vraies erreurs HyperTalk ===
    (« APRÈS » sort, et il DOIT sortir : mesuré sous Basilisk,
     HyperCard ouvre son dialogue et continue. Ces lignes-là

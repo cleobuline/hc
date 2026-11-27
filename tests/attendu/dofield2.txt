@@ -29,7 +29,7 @@
       v1 refusée recours v3                   1
 
 ── champ absent de cette carte
-   [ERR]    !! objet introuvable (v3, ligne 5 de button "B".t)
+   [ERR]    !! There is no card field "menu". (v3, ligne 5 de button "B".t)
 
 ── lecture directe
    beta

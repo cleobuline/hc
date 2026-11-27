@@ -22,7 +22,7 @@
          !! date incomprise : « 2026,,1 »
       → message "monthNameData" à field "CalField"
          · traité par field "CalField"
-         !! un rang numérique est attendu ici (v3, ligne 51 de field "CalField".drawCalendar)
+         !! Expected integer here. (v3, ligne 51 de field "CalField".drawCalendar)
 === texte du champ apres drawCalendar ===
 
 — retours de la v3 vers l'ancien interpréteur —

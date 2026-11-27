@@ -5,7 +5,7 @@
       objet fautif       : button "Bouton"
       ligne fautive      : 2
       lignes du message  : 2
-            !! objet introuvable (v3, ligne 2 de button "Bouton".mouseUp)
+            !! There is no card field "AbsentTotal". (v3, ligne 2 de button "Bouton".mouseUp)
          ligne 2 :  put the short name of card field "AbsentTotal"
 
    une erreur de syntaxe
@@ -22,7 +22,7 @@
       objet fautif       : button "Bouton"
       ligne fautive      : 2
       lignes du message  : 2
-            !! objet introuvable (v3, ligne 2 de button "Bouton".un)
+            !! There is no card field "AbsentTotal". (v3, ligne 2 de button "Bouton".un)
          ligne 2 :  put the short name of card field "AbsentTotal"
 
    deux OBJETS imbriques

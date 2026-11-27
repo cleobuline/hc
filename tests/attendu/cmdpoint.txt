@@ -30,7 +30,7 @@
 == 4. pas de dialogue pour l'arrêt ; une faute d'AVANT reste dite ==
 ── faute d'une commande, puis boucle arrêtée
       [Cmd-. au passage 3]
-      DIALOGUE :    !! objet introuvable : hide button "Absent" (ligne 2)
+      DIALOGUE :    !! There is no card button "Absent". (ligne 2)
       champ « intact », en cours 0, arrêt tenu 0
 
 == 5. au repos, tout est remis ==

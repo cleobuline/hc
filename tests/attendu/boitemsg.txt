@@ -105,6 +105,6 @@
     Depuis le 5 octobre, la question va à l'hôte, la fenêtre
     « Message » — runscript.c. Ce harnais n'a pas d'hôte qui
     réponde : la fenêtre est introuvable, et le noyau le dit)
-   [ERR]    !! fenêtre introuvable : Message (v3, ligne 2 de stack "Boite".essai)
-   [DIALOGUE]    !! fenêtre introuvable : Message (v3, ligne 2 de stack "Boite".essai)
+   [ERR]    !! No such window. (v3, ligne 2 de stack "Boite".essai)
+   [DIALOGUE]    !! No such window. (v3, ligne 2 de stack "Boite".essai)
 ligne 2 :  put the visible of msg

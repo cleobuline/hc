@@ -5,11 +5,11 @@
    put there is a window "Navigator"
       false
    close window "Navigator"
-      [ERR]    !! fenêtre introuvable : Navigator
+      [ERR]    !! No such window.
    hide window "Navigator"
-      [ERR]    !! fenêtre introuvable : Navigator
+      [ERR]    !! No such window.
    put the commands of window "Navigator"
-      [ERR]    !! fenêtre introuvable : Navigator (v3, ligne 2 de button "B".mouseUp)
+      [ERR]    !! No such window. (v3, ligne 2 de button "B".mouseUp)
 
 == 2. un hôte qui tient la palette Navigator ==
    palette navigator
@@ -58,9 +58,9 @@ doMenu "Next window"
    put there is a window "Navigator"
       false
    close window "Navigator"
-      [ERR]    !! fenêtre introuvable : Navigator
+      [ERR]    !! No such window.
    put the commands of window "Navigator"
-      [ERR]    !! fenêtre introuvable : Navigator (v3, ligne 2 de button "B".mouseUp)
+      [ERR]    !! No such window. (v3, ligne 2 de button "B".mouseUp)
    palette "Zut"
       [ERR]    !! palette introuvable : Zut
    palette "Navigator", "100,100"
