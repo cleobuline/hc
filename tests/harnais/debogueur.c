@@ -227,6 +227,14 @@ int main(void)
     hc_free(st);
 
     puts("\n== 10. Trace, Trace Into ==");
+    printf("   traceDelay par défaut : %d (mesuré dans HyperCard : 30)\n", hc_trace_delai());
+    hc_trace_delai_pose(0);             /* le harnais n'a pas à attendre */
+    printf("   posé à 0 : %d ; à -5 : ", hc_trace_delai());
+    hc_trace_delai_pose(-5);
+    printf("%d ; à 99999 : ", hc_trace_delai());
+    hc_trace_delai_pose(99999);
+    printf("%d\n", hc_trace_delai());
+    hc_trace_delai_pose(0);
     h.debug_trace = trace;
     st = hc_new_stack("T4");
     bg = hc_new_background(st, "F");

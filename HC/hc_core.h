@@ -1227,6 +1227,10 @@ void    hc_debug_variables(void (*cb)(void *u, const char *nom, const char *val,
  * une locale existante du gestionnaire arrêté (globale = 0), ou une globale
  * existante (1). Rend 1 si c'est écrit, 0 sinon. */
 int     hc_debug_variable_pose(const char *nom, int globale, const char *valeur);
+/* traceDelay, en ticks, pour la case « Trace Delay » du débogueur : lu, et
+ * posé (borné à 0..32767) sans passer par un script. */
+int     hc_trace_delai(void);
+void    hc_trace_delai_pose(int ticks);
 /* Les mêmes, FIGÉES au moment de la dernière erreur d'exécution, pour le
  * bouton « Debug » du dialogue d'erreur, qui paraît quand le script est fini.
  * Rend le nom du gestionnaire arrêté ("" hors gestionnaire). */

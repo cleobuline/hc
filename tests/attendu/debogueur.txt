@@ -75,6 +75,8 @@
    hors pause, une locale : 0
 
 == 10. Trace, Trace Into ==
+   traceDelay par défaut : 30 (mesuré dans HyperCard : 30)
+   posé à 0 : 0 ; à -5 : 0 ; à 99999 : 32767
    -- Trace depuis la ligne 2 : 3, 4, 5, sans entrer
       [ARRÊT] button "B".mouseUp ligne 2 -> trace
       [TRACE] button "B".mouseUp ligne 3

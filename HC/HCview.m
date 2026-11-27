@@ -5572,6 +5572,7 @@ static char kHcvMenuGestionnaires;
 @property (nonatomic) BOOL fige;                               /* après une erreur */
 @property (nonatomic, strong) NSArray<NSButton *> *avancer;   /* Step … Go */
 @property (nonatomic, strong) NSButton *abandon;
+@property (nonatomic, strong) NSTextField *delai;              /* Trace Delay */
 @end
 
 static HCDebogueur *gDebogueur;
@@ -5614,9 +5615,23 @@ static void hcv_debug_une_var(void *u, const char *nom, const char *val, int glo
     NSView *v = [self.panneau contentView];
 
     self.ou = [NSTextField labelWithString:@""];
-    [self.ou setFrame:NSMakeRect(10, 330, 500, 20)];
+    [self.ou setFrame:NSMakeRect(10, 330, 330, 20)];
     [self.ou setAutoresizingMask:NSViewWidthSizable | NSViewMinYMargin];
     [v addSubview:self.ou];
+
+    /* « Trace Delay », en ticks : le « Trace Delay… » du menu Debugger
+     * d'HyperCard, ici une case du panneau — l'utilisatrice préfère les
+     * boutons au menu. Le texte exact du dialogue d'HyperCard : non mesuré. */
+    NSTextField *td = [NSTextField labelWithString:@"Trace Delay:"];
+    [td setFrame:NSMakeRect(346, 330, 90, 20)];
+    [td setAlignment:NSTextAlignmentRight];
+    [td setAutoresizingMask:NSViewMinXMargin | NSViewMinYMargin];
+    [v addSubview:td];
+    self.delai = [[NSTextField alloc] initWithFrame:NSMakeRect(440, 328, 70, 22)];
+    [self.delai setTarget:self];
+    [self.delai setAction:@selector(delaiChange:)];
+    [self.delai setAutoresizingMask:NSViewMinXMargin | NSViewMinYMargin];
+    [v addSubview:self.delai];
 
     /* La liste : Name, Value. */
     NSScrollView *sl = [[NSScrollView alloc] initWithFrame:NSMakeRect(10, 140, 500, 184)];
@@ -5718,7 +5733,19 @@ static void hcv_debug_une_var(void *u, const char *nom, const char *val, int glo
     }
 }
 
+/* Une valeur qui n'est pas un entier ne change rien : la case reprend la
+ * valeur en vigueur. */
+- (void)delaiChange:(id)sender {
+    (void)sender;
+    long n = 0;
+    if (hcv_entier_strict([[self.delai stringValue] UTF8String], &n))
+        hc_trace_delai_pose(n > 32767 ? 32767 : (n < 0 ? 0 : (int)n));
+    [self.delai setIntValue:hc_trace_delai()];
+}
+
 - (void)geste:(id)sender {
+    /* La case lue avant de repartir : une valeur tapée sans Retour compte. */
+    [self delaiChange:nil];
     [NSApp stopModalWithCode:[sender tag]];
 }
 
@@ -5732,6 +5759,7 @@ static void hcv_debug_une_var(void *u, const char *nom, const char *val, int glo
     [self construis];
     for (NSButton *b in self.avancer) [b setEnabled:NO];
     [self.abandon setEnabled:NO];
+    [self.delai setEnabled:NO];
     self.fige = YES;
     [self remplisPour:o message:message ligne:ligne erreur:NO];
     if (![self.panneau isVisible]) [self.panneau orderFront:nil];
@@ -5787,6 +5815,8 @@ static void hcv_debug_une_var(void *u, const char *nom, const char *val, int glo
     [self construis];
     for (NSButton *b in self.avancer) [b setEnabled:!erreur];
     [self.abandon setEnabled:YES];
+    [self.delai setIntValue:hc_trace_delai()];
+    [self.delai setEnabled:YES];
     self.fige = erreur;
     [self remplisPour:o message:message ligne:ligne erreur:erreur];
 

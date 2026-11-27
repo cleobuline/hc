@@ -697,8 +697,8 @@ static void debug_arret(Object *o, const char *message, int ligne)
  * (attends). Au repos, l'hôte est prévenu que c'est fini (debug_trace avec
  * un objet nul), pour effacer sa flèche.
  *
- * traceDelay vaut 0 par défaut, le défaut de la référence d'Apple : sans
- * pause, mais l'hôte respire à chaque ligne. NON MESURÉ : l'unité exacte
+ * traceDelay vaut 30 par défaut, mesuré dans HyperCard (voir G_REGLAGES) ;
+ * à 0, sans pause, mais l'hôte respire à chaque ligne. NON MESURÉ : l'unité exacte
  * qu'applique HyperCard (ici le tick, un soixantième de seconde, comme
  * « wait »), et si sa trace remonte dans l'appelant à la fin du
  * gestionnaire tracé (ici oui, comme Step). */
@@ -7621,7 +7621,11 @@ static struct {
      * 7, le plus fort, est un choix. */
     { "usermodify",       "userModify",       REG_BOOL,   0, 0, 1, "" },
     { "longwindowtitles", "longWindowTitles", REG_BOOL,   0, 0, 1, "" },
-    { "tracedelay",       "traceDelay",       REG_ENTIER, 0, 0, 32767, "" },
+    /* 30 et non 0 : MESURÉ DANS HYPERCARD (Basilisk II) par l'utilisatrice
+     * le 27 novembre, dans « Trace Delay… » du menu Debugger. La référence
+     * d'Apple, suivie jusque-là, disait 0 — et à 0, Trace file trop vite
+     * pour se voir. */
+    { "tracedelay",       "traceDelay",       REG_ENTIER, 30, 0, 32767, "" },
     { "dialingvolume",    "dialingVolume",    REG_ENTIER, 7, 0, 7, "" },
     { "printtextheight",  "printTextHeight",  REG_ENTIER, 13, 1, 32767, "" },
     { "printtextsize",    "printTextSize",    REG_ENTIER, 10, 1, 32767, "" },
@@ -7646,6 +7650,19 @@ static int trace_delai(void)
 {
     int i = reglage_index("tracedelay");
     return i >= 0 ? G_REGLAGES[i].valeur : 0;
+}
+
+/* Pour la case « Trace Delay » du panneau du débogueur : lire et poser sans
+ * passer par un script, ce qui pendant une pause en ouvrirait un second. */
+int hc_trace_delai(void) { return trace_delai(); }
+
+void hc_trace_delai_pose(int ticks)
+{
+    int i = reglage_index("tracedelay");
+    if (i < 0) return;
+    if (ticks < G_REGLAGES[i].mini) ticks = G_REGLAGES[i].mini;
+    if (ticks > G_REGLAGES[i].maxi) ticks = G_REGLAGES[i].maxi;
+    G_REGLAGES[i].valeur = ticks;
 }
 
 static int reglage_index(const char *nom)
