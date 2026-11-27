@@ -279,6 +279,21 @@ int main(void)
     { int g[] = { HC_DEBUG_TRACE }; clic(g, 1); }
     g_trace_repond_ligne = 0; g_trace_reponse = HC_TRACE_SUIT;
     h.debug_trace = NULL;
+
+    puts("\n== 11. debug checkpoint ne s'arrête pas deux fois ==");
+    hc_debug_point_pose(B, 2, 0);
+    hc_set_script(B, "on mouseUp\n  put 1 into x\n  debug checkpoint\n  put 2 into x\n"
+                     "  put \"x=\" & x\nend mouseUp\n");
+    hc_debug_point_pose(B, 2, 1);
+    puts("   -- Step depuis la ligne 2 : 3, puis 4, puis 5");
+    { int g[] = { HC_DEBUG_PAS, HC_DEBUG_PAS, HC_DEBUG_PAS, HC_DEBUG_PAS }; clic(g, 4); }
+    hc_debug_point_pose(B, 2, 0);
+    puts("   -- un point rouge sur la ligne 3 elle-même : un seul arrêt");
+    hc_debug_point_pose(B, 3, 1);
+    { int g[] = { HC_DEBUG_CONTINUE, HC_DEBUG_CONTINUE }; clic(g, 2); }
+    hc_debug_point_pose(B, 3, 0);
+    puts("   -- sans point ni pas : la commande s'arrête, comme avant");
+    { int g[] = { HC_DEBUG_CONTINUE }; clic(g, 1); }
     hc_free(st);
     return 0;
 }

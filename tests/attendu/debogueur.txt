@@ -117,3 +117,17 @@
       [ARRÊT] button "B".mouseUp ligne 2 -> trace
       [TRACE] button "B".mouseUp ligne 3
       [TRACE] button "B".mouseUp ligne 4 -> abandon
+
+== 11. debug checkpoint ne s'arrête pas deux fois ==
+   -- Step depuis la ligne 2 : 3, puis 4, puis 5
+      [ARRÊT] button "B".mouseUp ligne 2 -> pas
+      [ARRÊT] button "B".mouseUp ligne 3 -> pas
+      [ARRÊT] button "B".mouseUp ligne 4 -> pas
+      [ARRÊT] button "B".mouseUp ligne 5 -> pas
+      x=2
+   -- un point rouge sur la ligne 3 elle-même : un seul arrêt
+      [ARRÊT] button "B".mouseUp ligne 3 -> continuer
+      x=2
+   -- sans point ni pas : la commande s'arrête, comme avant
+      [ARRÊT] button "B".mouseUp ligne 3 -> continuer
+      x=2
