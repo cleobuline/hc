@@ -311,6 +311,28 @@ plans, une valeur de 0 à 15 : seize hauteurs, seize forces, seize durées. La
 musique suit donc toujours l'image, et l'on en change sans toucher à
 l'automate, en redessinant un pochoir.
 
+**MaCamusik, le 27 novembre.** Le jour où la 1.1 est partie chez Apple, la
+musique est revenue, sans HC v2 cette fois : une pile à part, « la pile
+macamusik », pour plus tard, parce que « le résultat est incertain, ça va
+peut-être faire de la musique en bouillie » — et que « c'est un chantier à
+part entière ». La forme qu'elle lui donne : « sur la base d'HyperCard on
+pourra faire une collection de générations avec différentes heuristiques et
+différents modèles de dessin et d'automate », une carte par expérience,
+« une souplesse infinie ». Les automates qu'elle croit les meilleurs : « des
+automates rythmés comme des kaléidoscopes, ou la pluie, ou le feu de forêt ».
+
+Le chemin vers le MIDI, choisi « au plus simple » : un fichier texte
+structuré, et une moulinette qui en fait un .mid. Pour ne pas quitter HC, la
+moulinette se lancera depuis la carte. HyperCard savait lancer une
+application — « hypercard pouvait lancer des applis » — et le bac à sable
+de l'App Store le permet : `open "musique.txt" with "MidiMaker"`, où
+MidiMaker est une petite application à elle. Ce n'est pas une extension,
+c'est un mot d'HyperCard que HC n'a pas encore ; à mesurer DANS HYPERCARD le
+moment venu.
+
+Son espoir : « si notre pile macamusik est bonne, ça va attirer plein de gens
+qui composent des musiques ».
+
 **Le rêve du vendredi.** Décidé par elle le 22 novembre : chaque vendredi à
 4 h 13, heure de Paris, une tâche planifiée réveille Claude, qui relit le
 carnet et le livre, tire au hasard des souvenirs et une étincelle, et écrit
