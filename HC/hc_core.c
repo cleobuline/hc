@@ -596,7 +596,7 @@ typedef struct { Object *o; int ligne; } PointArret;
 static PointArret *g_points = NULL;
 static int g_npoints = 0, g_cappoints = 0;
 
-enum { DBG_LIBRE, DBG_PAS, DBG_PAS_DEDANS };
+enum { DBG_LIBRE, DBG_PAS, DBG_PAS_DEDANS, DBG_TRACE, DBG_TRACE_DEDANS };
 static int g_dbg_mode = DBG_LIBRE;
 static int g_dbg_prof = 0;
 
@@ -663,6 +663,13 @@ static void debug_arret(Object *o, const char *message, int ligne)
     case HC_DEBUG_PAS_DEDANS:
         g_dbg_mode = DBG_PAS_DEDANS;
         break;
+    case HC_DEBUG_TRACE:
+        g_dbg_mode = DBG_TRACE;
+        g_dbg_prof = g_depth;
+        break;
+    case HC_DEBUG_TRACE_DEDANS:
+        g_dbg_mode = DBG_TRACE_DEDANS;
+        break;
     case HC_DEBUG_ABANDON:
         /* Le chemin de Cmd-., sans dialogue. Il passe outre cantAbort : c'est
          * l'utilisatrice qui le demande, depuis le débogueur, pas une touche
@@ -676,6 +683,28 @@ static void debug_arret(Object *o, const char *message, int ligne)
     }
 }
 
+/* TRACE : LE SCRIPT AVANCE SEUL, ET L'ON REGARDE.
+ *
+ * Mesuré DANS HYPERCARD (Basilisk II), sur la capture de l'utilisatrice du
+ * 26 novembre : le menu Debugger porte « Trace » (sans touche) et « Trace
+ * Into » (⌘T), à côté de Step et Step Into, et « Trace Delay… ». Trace est
+ * à Step ce que Trace Into est à Step Into : la même règle pour savoir quelle
+ * ligne se montre, mais sans s'arrêter — l'hôte la montre (debug_trace), on
+ * attend traceDelay ticks, et l'on continue.
+ *
+ * Un point d'arrêt rencontré en chemin ARRÊTE la trace : c'est une pause,
+ * et le geste qui suit décide. Cmd-. l'interrompt, pendant l'attente aussi
+ * (attends). Au repos, l'hôte est prévenu que c'est fini (debug_trace avec
+ * un objet nul), pour effacer sa flèche.
+ *
+ * traceDelay vaut 0 par défaut, le défaut de la référence d'Apple : sans
+ * pause, mais l'hôte respire à chaque ligne. NON MESURÉ : l'unité exacte
+ * qu'applique HyperCard (ici le tick, un soixantième de seconde, comme
+ * « wait »), et si sa trace remonte dans l'appelant à la fin du
+ * gestionnaire tracé (ici oui, comme Step). */
+static void attends(double secondes);
+static int trace_delai(void);
+
 static void v3_avant_ligne(void *d, const HctNoeud *n)
 {
     (void)d;
@@ -684,7 +713,14 @@ static void v3_avant_ligne(void *d, const HctNoeud *n)
     int arret = g_dbg_mode == DBG_PAS_DEDANS
              || (g_dbg_mode == DBG_PAS && g_depth <= g_dbg_prof)
              || (g_npoints && hc_debug_point(g_exec_objet, ligne));
-    if (arret) debug_arret(g_exec_objet, g_exec_message, ligne);
+    if (arret) { debug_arret(g_exec_objet, g_exec_message, ligne); return; }
+    int trace = g_dbg_mode == DBG_TRACE_DEDANS
+             || (g_dbg_mode == DBG_TRACE && g_depth <= g_dbg_prof);
+    if (trace && g_host && g_host->debug_trace) {
+        g_host->debug_trace(g_exec_objet, g_exec_message ? g_exec_message : "",
+                            ligne);
+        attends(trace_delai() / 60.0);
+    }
 }
 
 /* Au repos : plus rien ne tourne, la demande est servie. */
@@ -693,6 +729,10 @@ static void interruption_servie(void)
     if (g_depth == 0 && g_msg_box == 0) {
         g_interrompu = 0;
         g_abandon = 0;
+        /* La trace finie, l'hôte efface sa flèche. */
+        if ((g_dbg_mode == DBG_TRACE || g_dbg_mode == DBG_TRACE_DEDANS) &&
+            g_host && g_host->debug_trace)
+            g_host->debug_trace(NULL, NULL, 0);
         g_dbg_mode = DBG_LIBRE;         /* le pas à pas meurt avec le script */
     }
 }
@@ -7571,8 +7611,10 @@ static struct {
      * « set the printTextFont to "Times" » — ou que HyperCard Help prépare —
      * « set the userModify to true » — s'arrêtait là. Ils sont RETENUS et
      * RELUS, comme les six du haut, et ne sont PAS CONSULTÉS : HC n'imprime
-     * pas de rapport, n'a qu'un éditeur de script, pas de Message Watcher ni
-     * de Variable Watcher, et pas de modem.
+     * pas de rapport, n'a qu'un éditeur de script et pas de modem ; son
+     * Message Watcher et son Variable Watcher (la 1.1) ne se remplacent pas
+     * par un autre nom. SAUF traceDelay, que Trace consulte depuis la 1.1
+     * (trace_delai).
      *
      * Les défauts sont ceux qu'écrit la référence d'Apple, carte par carte.
      * NON MESURÉ : dialingVolume, dont la référence ne donne pas le défaut —
@@ -7595,6 +7637,16 @@ static struct {
     { "variablewatcher",  "variableWatcher",  REG_TEXTE, 0, 0, 0, "VariableWatcher" },
 };
 #define HC_NREGLAGES ((int)(sizeof G_REGLAGES / sizeof *G_REGLAGES))
+
+static int reglage_index(const char *nom);
+
+/* traceDelay, en ticks : le seul des réglages du haut que le débogueur
+ * CONSULTE. Voir v3_avant_ligne. */
+static int trace_delai(void)
+{
+    int i = reglage_index("tracedelay");
+    return i >= 0 ? G_REGLAGES[i].valeur : 0;
+}
 
 static int reglage_index(const char *nom)
 {

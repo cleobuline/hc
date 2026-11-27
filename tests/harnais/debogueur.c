@@ -46,7 +46,8 @@ static void ligne(HcLineKind k, int d, const char *t)
 
 static const int *g_gestes = NULL;
 static int g_ngestes = 0, g_i = 0;
-static const char *nom_geste[] = { "continuer", "pas", "pas dedans", "abandon" };
+static const char *nom_geste[] = { "continuer", "pas", "pas dedans", "abandon",
+                                   "trace", "trace dedans" };
 
 static void une_var(void *u, const char *nom, const char *val, int globale)
 {
@@ -57,6 +58,14 @@ static void une_var(void *u, const char *nom, const char *val, int globale)
 static int g_montre_vars = 0;
 
 static int g_ecrit = 0;
+
+static void trace(Object *o, const char *message, int l)
+{
+    if (!o) { printf("      [TRACE] fin\n"); return; }
+    char qui[64];
+    hc_describe(o, qui, sizeof qui);
+    printf("      [TRACE] %s.%s ligne %d\n", qui, message, l);
+}
 
 static int pause(Object *o, const char *message, int l)
 {
@@ -215,6 +224,40 @@ int main(void)
       hc_send(B, "mouseUp"); }
     g_ecrit = 0;
     printf("   hors pause, une locale : %d\n", hc_debug_variable_pose("x", 0, "5"));
+    hc_free(st);
+
+    puts("\n== 10. Trace, Trace Into ==");
+    h.debug_trace = trace;
+    st = hc_new_stack("T4");
+    bg = hc_new_background(st, "F");
+    c  = hc_new_card(st, bg, "C");
+    B  = hc_new_button(c, "B");
+    hc_set_current_card(c);
+    hc_set_script(B,
+        "on mouseUp\n"
+        "  put 1 into x\n"
+        "  sousProgramme\n"
+        "  put 3 into x\n"
+        "  put \"fini, x=\" & x\n"
+        "end mouseUp\n"
+        "on sousProgramme\n"
+        "  put 20 into y\n"
+        "end sousProgramme\n");
+    hc_debug_point_pose(B, 2, 1);
+    puts("   -- Trace depuis la ligne 2 : 3, 4, 5, sans entrer");
+    { int g[] = { HC_DEBUG_TRACE }; clic(g, 1); }
+    puts("   -- Trace Into : 3, 8, 4, 5");
+    { int g[] = { HC_DEBUG_TRACE_DEDANS }; clic(g, 1); }
+    puts("   -- un point en ligne 4 arrête la trace, Go repart libre");
+    hc_debug_point_pose(B, 4, 1);
+    { int g[] = { HC_DEBUG_TRACE, HC_DEBUG_CONTINUE }; clic(g, 2); }
+    hc_debug_point_pose(B, 4, 0);
+    puts("   -- traceDelay 2 : la trace l'attend, et finit pareil");
+    T = hc_new_button(c, "outil");
+    hc_set_script(T, "on t\nset the traceDelay to 2\nput the traceDelay\nend t\n");
+    hc_send(T, "t");
+    { int g[] = { HC_DEBUG_TRACE }; clic(g, 1); }
+    h.debug_trace = NULL;
     hc_free(st);
     return 0;
 }

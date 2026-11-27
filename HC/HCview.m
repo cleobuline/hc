@@ -5515,7 +5515,13 @@ static char kHcvMenuGestionnaires;
  *   Step       la ligne suivante du même gestionnaire          (Cmd-S)
  *   Step Into  la ligne suivante, même dans un gestionnaire appelé (Cmd-I)
  *   Go         jusqu'au prochain point d'arrêt                 (Cmd-G)
+ *   Trace      avancer SEUL, ligne à ligne, dans le même gestionnaire
+ *   Trace Into avancer seul, même dans un gestionnaire appelé      (Cmd-T)
  *   Abort      arrêter le script                               (Cmd-A)
+ *
+ * Trace attend traceDelay ticks entre deux lignes ; la flèche avance et le
+ * panneau suit (cocoa_debug_trace), boutons grisés ; un point rouge
+ * l'arrête, Cmd-. l'interrompt.
  *
  * et, dessous, les variables : les locales du gestionnaire, puis les
  * globales (hc_debug_variables) — le Variable Watcher d'HyperCard, qu'on
@@ -5564,7 +5570,8 @@ static char kHcvMenuGestionnaires;
 @property (nonatomic, strong) NSTextView *valeur;
 @property (nonatomic, strong) NSMutableArray<NSMutableDictionary *> *lignes;
 @property (nonatomic) BOOL fige;                               /* après une erreur */
-@property (nonatomic, strong) NSArray<NSButton *> *avancer;   /* Step, Step Into, Go */
+@property (nonatomic, strong) NSArray<NSButton *> *avancer;   /* Step … Go */
+@property (nonatomic, strong) NSButton *abandon;
 @end
 
 static HCDebogueur *gDebogueur;
@@ -5579,11 +5586,13 @@ static void hcv_debug_une_var(void *u, const char *nom, const char *val, int glo
 @implementation HCDebogueur
 
 - (NSButton *)bouton:(NSString *)titre touche:(NSString *)k geste:(int)g x:(CGFloat)x {
-    NSButton *b = [[NSButton alloc] initWithFrame:NSMakeRect(x, 10, 96, 30)];
+    NSButton *b = [[NSButton alloc] initWithFrame:NSMakeRect(x, 10, 82, 30)];
     [b setTitle:titre];
     [b setBezelStyle:NSBezelStyleRounded];
-    [b setKeyEquivalent:k];
-    [b setKeyEquivalentModifierMask:NSEventModifierFlagCommand];
+    if ([k length]) {
+        [b setKeyEquivalent:k];
+        [b setKeyEquivalentModifierMask:NSEventModifierFlagCommand];
+    }
     [b setTag:g];
     [b setTarget:self];
     [b setAction:@selector(geste:)];
@@ -5596,7 +5605,7 @@ static void hcv_debug_une_var(void *u, const char *nom, const char *val, int glo
     if (self.panneau) return;
     self.lignes = [NSMutableArray array];
     self.panneau = [[NSPanel alloc]
-        initWithContentRect:NSMakeRect(320, 120, 420, 360)
+        initWithContentRect:NSMakeRect(320, 120, 520, 360)
                   styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskResizable)
                     backing:NSBackingStoreBuffered
                       defer:NO];
@@ -5605,12 +5614,12 @@ static void hcv_debug_une_var(void *u, const char *nom, const char *val, int glo
     NSView *v = [self.panneau contentView];
 
     self.ou = [NSTextField labelWithString:@""];
-    [self.ou setFrame:NSMakeRect(10, 330, 400, 20)];
+    [self.ou setFrame:NSMakeRect(10, 330, 500, 20)];
     [self.ou setAutoresizingMask:NSViewWidthSizable | NSViewMinYMargin];
     [v addSubview:self.ou];
 
     /* La liste : Name, Value. */
-    NSScrollView *sl = [[NSScrollView alloc] initWithFrame:NSMakeRect(10, 140, 400, 184)];
+    NSScrollView *sl = [[NSScrollView alloc] initWithFrame:NSMakeRect(10, 140, 500, 184)];
     [sl setHasVerticalScroller:YES];
     [sl setBorderType:NSBezelBorder];
     [sl setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
@@ -5621,7 +5630,7 @@ static void hcv_debug_une_var(void *u, const char *nom, const char *val, int glo
     [cn setEditable:NO];
     NSTableColumn *cv = [[NSTableColumn alloc] initWithIdentifier:@"val"];
     [[cv headerCell] setStringValue:@"Value"];
-    [cv setWidth:250];
+    [cv setWidth:350];
     [cv setEditable:NO];
     [cv setResizingMask:NSTableColumnAutoresizingMask];
     [self.table addTableColumn:cn];
@@ -5634,7 +5643,7 @@ static void hcv_debug_une_var(void *u, const char *nom, const char *val, int glo
     [v addSubview:sl];
 
     /* Dessous, la valeur entière de la variable choisie. */
-    NSScrollView *se = [[NSScrollView alloc] initWithFrame:NSMakeRect(10, 50, 400, 84)];
+    NSScrollView *se = [[NSScrollView alloc] initWithFrame:NSMakeRect(10, 50, 500, 84)];
     [se setHasVerticalScroller:YES];
     [se setBorderType:NSBezelBorder];
     [se setAutoresizingMask:NSViewWidthSizable | NSViewMaxYMargin];
@@ -5649,11 +5658,16 @@ static void hcv_debug_une_var(void *u, const char *nom, const char *val, int glo
     [se setDocumentView:self.valeur];
     [v addSubview:se];
 
+    /* Les mots et les touches du menu Debugger d'HyperCard, relevés sur la
+     * capture du 26 novembre ; Trace n'y a pas de touche. */
     self.avancer = @[
-        [self bouton:@"Step"      touche:@"s" geste:HC_DEBUG_PAS        x:10],
-        [self bouton:@"Step Into" touche:@"i" geste:HC_DEBUG_PAS_DEDANS x:110],
-        [self bouton:@"Go"        touche:@"g" geste:HC_DEBUG_CONTINUE   x:210] ];
-    [self bouton:@"Abort"     touche:@"a" geste:HC_DEBUG_ABANDON    x:310];
+        [self bouton:@"Step"       touche:@"s" geste:HC_DEBUG_PAS          x:10],
+        [self bouton:@"Step Into"  touche:@"i" geste:HC_DEBUG_PAS_DEDANS   x:94],
+        [self bouton:@"Trace"      touche:@""  geste:HC_DEBUG_TRACE        x:178],
+        [self bouton:@"Trace Into" touche:@"t" geste:HC_DEBUG_TRACE_DEDANS x:262],
+        [self bouton:@"Go"         touche:@"g" geste:HC_DEBUG_CONTINUE     x:346] ];
+    self.abandon =
+        [self bouton:@"Abort"      touche:@"a" geste:HC_DEBUG_ABANDON      x:430];
 }
 
 - (NSInteger)numberOfRowsInTableView:(NSTableView *)tv {
@@ -5712,12 +5726,26 @@ static void hcv_debug_une_var(void *u, const char *nom, const char *val, int glo
     return [self attendSur:o message:message ligne:ligne erreur:NO];
 }
 
-- (int)attendSur:(Object *)o message:(const char *)message ligne:(int)ligne
-          erreur:(BOOL)erreur {
+/* Pendant une TRACE : le panneau suit, sans attendre de geste. Les
+ * boutons sont grisés — le script tourne ; Cmd-. l'interrompt. */
+- (void)suisLaTrace:(Object *)o message:(const char *)message ligne:(int)ligne {
     [self construis];
-    for (NSButton *b in self.avancer) [b setEnabled:!erreur];
-    self.fige = erreur;
+    for (NSButton *b in self.avancer) [b setEnabled:NO];
+    [self.abandon setEnabled:NO];
+    self.fige = YES;
+    [self remplisPour:o message:message ligne:ligne erreur:NO];
+    if (![self.panneau isVisible]) [self.panneau orderFront:nil];
+    [self.panneau display];
+}
 
+- (void)finDeTrace {
+    if (!self.panneau) return;
+    [self.panneau orderOut:nil];
+    [self.abandon setEnabled:YES];
+}
+
+- (void)remplisPour:(Object *)o message:(const char *)message ligne:(int)ligne
+             erreur:(BOOL)erreur {
     /* La variable choisie reste choisie d'un pas à l'autre, si elle existe
      * encore : on suit une valeur en avançant. */
     NSString *choisie = nil;
@@ -5752,6 +5780,15 @@ static void hcv_debug_une_var(void *u, const char *nom, const char *val, int glo
         ? [NSString stringWithFormat:@" — %@", hcv_texte(message)] : @"";
     [self.ou setStringValue:[NSString stringWithFormat:@"%@%@, line %d%@",
                              hcv_texte(d), gest, ligne, erreur ? @" (error)" : @""]];
+}
+
+- (int)attendSur:(Object *)o message:(const char *)message ligne:(int)ligne
+          erreur:(BOOL)erreur {
+    [self construis];
+    for (NSButton *b in self.avancer) [b setEnabled:!erreur];
+    [self.abandon setEnabled:YES];
+    self.fige = erreur;
+    [self remplisPour:o message:message ligne:ligne erreur:erreur];
 
     /* À droite de la fenêtre du script, pour ne pas cacher la ligne. */
     for (HCEditionScript *x in gEditions)
@@ -5768,14 +5805,15 @@ static void hcv_debug_une_var(void *u, const char *nom, const char *val, int glo
     [self.panneau makeKeyAndOrderFront:nil];
     NSModalResponse r = [NSApp runModalForWindow:self.panneau];
     [self.panneau orderOut:nil];
-    if (r < HC_DEBUG_CONTINUE || r > HC_DEBUG_ABANDON) return HC_DEBUG_ABANDON;
+    if (r < HC_DEBUG_CONTINUE || r > HC_DEBUG_TRACE_DEDANS) return HC_DEBUG_ABANDON;
     return (int)r;
 }
 
 @end
 
-static int hcv_debogueur_montre(Object *o, const char *message, int ligne,
-                                BOOL erreur)
+/* Le script de l'objet, ouvert, la ligne fléchée en vert et visible : pour
+ * une pause, une erreur, et chaque ligne d'une trace. */
+static HCEditionScript *hcv_debug_montre_ligne(Object *o, int ligne, BOOL erreur)
 {
 
     /* Le script de l'objet, ouvert sur la ligne : la fenêtre déjà ouverte si
@@ -5809,7 +5847,13 @@ static int hcv_debogueur_montre(Object *o, const char *message, int ligne,
      * s'ouvre. La carte aussi, telle que le script l'a laissée. */
     [ed.panneau display];
     [gView display];
+    return ed;
+}
 
+static int hcv_debogueur_montre(Object *o, const char *message, int ligne,
+                                BOOL erreur)
+{
+    HCEditionScript *ed = hcv_debug_montre_ligne(o, ligne, erreur);
     if (!gDebogueur) gDebogueur = [[HCDebogueur alloc] init];
     int geste = [gDebogueur attendSur:o message:message ligne:ligne erreur:erreur];
 
@@ -5824,6 +5868,24 @@ static int cocoa_debug_pause(Object *o, const char *message, int ligne)
 {
     if (!gView || !o) return HC_DEBUG_CONTINUE;
     return hcv_debogueur_montre(o, message, ligne, NO);
+}
+
+/* Une ligne de TRACE : la flèche avance, le panneau suit, sans attendre.
+ * Objet nul : la trace est finie, la flèche s'efface et le panneau se
+ * retire. */
+static void cocoa_debug_trace(Object *o, const char *message, int ligne)
+{
+    if (!gView) return;
+    if (!o) {
+        for (HCEditionScript *x in gEditions)
+            if ([x.vue isKindOfClass:[HCScriptView class]])
+                ((HCScriptView *)x.vue).ligneCourante = 0;
+        [gDebogueur finDeTrace];
+        return;
+    }
+    hcv_debug_montre_ligne(o, ligne, NO);
+    if (!gDebogueur) gDebogueur = [[HCDebogueur alloc] init];
+    [gDebogueur suisLaTrace:o message:message ligne:ligne];
 }
 
 /* ═══ LE MESSAGE WATCHER (la 1.1) ════════════════════════════════════════
@@ -11024,6 +11086,7 @@ static void hcv_survol(HCView *v, Object *carte)
     host.click_twice_at = cocoa_click_twice_at;
     host.debug_pause   = cocoa_debug_pause;
     host.message_vu    = cocoa_message_vu;
+    host.debug_trace   = cocoa_debug_trace;
     host.type_text     = cocoa_type_text;
     host.visual_effect = cocoa_visual_effect;
     host.idle          = cocoa_idle;

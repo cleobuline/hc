@@ -1049,6 +1049,13 @@ typedef struct {
     void (*message_vu)(int id, const char *message, Object *cible,
                        int profondeur, int pris);
 
+    /* TRACE : la ligne que le script va exécuter, montrée SANS s'arrêter —
+     * après le geste HC_DEBUG_TRACE ou HC_DEBUG_TRACE_DEDANS. Le noyau attend
+     * ensuite traceDelay ticks, en respirant. Appelé une dernière fois avec
+     * un objet NUL quand le script est fini : l'hôte efface sa flèche.
+     * NULL : la trace avance sans rien montrer, et sans attendre. */
+    void (*debug_trace)(Object *o, const char *message, int ligne);
+
     /* UN MENU LOCAL, POUR L'XFCN « PopUpMenu » (Andrew Gilmartin, Brown
      * University), que des piles d'époque appellent et dont le code 68000
      * ne peut pas tourner ici — voir v3_popupmenu dans hc_core.c.
@@ -1205,7 +1212,10 @@ int     hc_interrompu(void);
  * numéro de ligne de son script ; ils vivent le temps de la session et
  * meurent avec leur objet. hc_debug_points rend leur nombre pour cet objet,
  * et en écrit au plus `max` dans `lignes` (qui peut être NULL). */
-enum { HC_DEBUG_CONTINUE = 0, HC_DEBUG_PAS, HC_DEBUG_PAS_DEDANS, HC_DEBUG_ABANDON };
+enum { HC_DEBUG_CONTINUE = 0, HC_DEBUG_PAS, HC_DEBUG_PAS_DEDANS, HC_DEBUG_ABANDON,
+       /* Trace et Trace Into : avancer seul, ligne à ligne, en montrant
+        * chaque ligne par debug_trace (HcHost), traceDelay ticks entre deux. */
+       HC_DEBUG_TRACE, HC_DEBUG_TRACE_DEDANS };
 void    hc_debug_point_pose(Object *o, int ligne, int pose);
 int     hc_debug_point(Object *o, int ligne);
 int     hc_debug_points(Object *o, int *lignes, int max);
