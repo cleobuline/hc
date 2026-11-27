@@ -2236,8 +2236,10 @@ static NSString *const HC_URL_COMMENTAIRES = @"https://hc.labynet.fr/commentaire
     /* SOUTENIR HC — demandé par l'utilisatrice le 6 octobre. Le bouton de don
      * PayPal qu'elle a créé, par son lien direct : un bouton en JavaScript ne
      * s'affiche que dans une page web. Lien vérifié : il ouvre la page de don
-     * au nom de HC. À RETIRER d'une éventuelle version App Store, où Apple
-     * encadre les liens de paiement. */
+     * au nom de HC. GARDÉ DANS LA VERSION APP STORE, décidé par l'utilisatrice
+     * le 27 novembre : Apple n'a rien dit à la soumission, et s'il refuse un
+     * jour, « on perdra que 3 ou 4 jours et on fera une autre soumission ».
+     * La page des commentaires porte aussi le bouton de don. */
     NSDictionary *don   = @{ NSFontAttributeName: grasse,
                              NSLinkAttributeName: [NSURL URLWithString:
                                  @"https://www.paypal.com/ncp/payment/V7F3MJJ2NRZ6L"],
