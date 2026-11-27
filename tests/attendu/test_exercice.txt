@@ -544,7 +544,7 @@
 [v3]    v1 refusée recours v3                   1
 � button "Exercice"
       · traité par button "Exercice"
-         !! objet introuvable (v3, ligne 405 de button "Exercice".testChamps)
+         !! There is no bkgnd field "data 2". (v3, ligne 405 de button "Exercice".testChamps)
    → message "testFichiers" à button "Exercice"
       · traité par button "Exercice"
       → message "verif" à button "Exercice"
@@ -559,7 +559,7 @@
          · traité par button "Exercice"
          → message "aplat" à button "Exercice"
             · traité par button "Exercice"
-      !! objet introuvable : put rapport & return & gSortie into field "data 2"
+      !! There is no bkgnd field "data 2".
    — retours de la v3 vers l'ancien interpréteur —
       recours objet: field "data 2"            1
       commande put: put rapport & return & gSor 1

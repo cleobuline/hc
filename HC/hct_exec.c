@@ -576,7 +576,7 @@ static int ecrit_dans(HctExec *x, const HctNoeud *cible, HctValeur vv,
                  * lecture refusait déjà ; l'écriture corrompait. */
                 if (!hct_est_nombre(a.txt))
                     hct_ctx_faute(&x->ctx, cible->fils[0],
-                                  "un rang numérique est attendu ici");
+                                  "Expected integer here.");
                 n1 = hct_vers_rang(a.txt, &hors);
                 if (hors) hct_ctx_faute(&x->ctx, cible->fils[0],
                                         "rang de morceau hors limites");
@@ -587,7 +587,7 @@ static int ecrit_dans(HctExec *x, const HctNoeud *cible, HctValeur vv,
                 int hors;
                 if (!hct_est_nombre(b.txt))
                     hct_ctx_faute(&x->ctx, cible->fils[1],
-                                  "un rang numérique est attendu ici");
+                                  "Expected integer here.");
                 n2 = hct_vers_rang(b.txt, &hors);
                 if (hors) hct_ctx_faute(&x->ctx, cible->fils[1],
                                         "rang de morceau hors limites");
@@ -735,7 +735,7 @@ static int supprime_dans(HctExec *x, const HctNoeud *cible)
              * annonçant que tout s'était bien passé. */
             if (!hct_est_nombre(a.txt))
                 hct_ctx_faute(&x->ctx, cible->fils[0],
-                              "un rang numérique est attendu ici");
+                              "Expected integer here.");
             n1 = hct_vers_rang(a.txt, &hors);
             if (hors) hct_ctx_faute(&x->ctx, cible->fils[0],
                                     "rang de morceau hors limites");
@@ -746,7 +746,7 @@ static int supprime_dans(HctExec *x, const HctNoeud *cible)
             int hors;
             if (!hct_est_nombre(b.txt))
                 hct_ctx_faute(&x->ctx, cible->fils[1],
-                              "un rang numérique est attendu ici");
+                              "Expected integer here.");
             n2 = hct_vers_rang(b.txt, &hors);
             if (hors) hct_ctx_faute(&x->ctx, cible->fils[1],
                                     "rang de morceau hors limites");
@@ -1180,7 +1180,7 @@ static void commande(HctExec *x, const HctNoeud *n)
 
         double xv, xc, r = 0;
         if (!nombre_de_val(val, &xv) || !nombre_de_val(act, &xc)) {
-            hct_ctx_faute(&x->ctx, n, "un nombre est attendu ici");
+            hct_ctx_faute(&x->ctx, n, "Expected number here.");
             hct_val_libere(&val); hct_val_libere(&act);
             return;
         }
@@ -1350,7 +1350,7 @@ static void execute_si(HctExec *x, const HctNoeud *n)
     int valide, vrai = hct_vers_bool(c.txt, &valide);
     hct_val_libere(&c);
     if (!valide) {
-        hct_ctx_faute(&x->ctx, n->fils[0], "true ou false attendu ici");
+        hct_ctx_faute(&x->ctx, n->fils[0], "Expected true or false here.");
         return;
     }
     if (vrai)                    hct_exec(x, n->fils[1]);
@@ -1506,7 +1506,7 @@ static void execute_repete(HctExec *x, const HctNoeud *n)
             int valide, vrai = hct_vers_bool(c.txt, &valide);
             hct_val_libere(&c);
             if (!valide) {
-                hct_ctx_faute(&x->ctx, n->fils[0], "true ou false attendu ici");
+                hct_ctx_faute(&x->ctx, n->fils[0], "Expected true or false here.");
                 break;
             }
             if (!strcasecmp(forme, "while") && !vrai) break;
@@ -1674,7 +1674,20 @@ void hct_exec(HctExec *x, const HctNoeud *n)
             }
             return;
 
-        case HCTN_COMMANDE:      commande(x, n);        return;
+        case HCTN_COMMANDE:
+            commande(x, n);
+            /* « Can't understand arguments of "put". » : la propriété
+             * inconnue accuse la commande qui la porte, comme dans HyperCard
+             * — la PLUS INTÉRIEURE : dans « do "put the max of …" », c'est
+             * « put » que nomme HyperCard (Torture3, 1er octobre), pas « do ».
+             * Voir HCT_FAUTE_ARGUMENTS. */
+            if (x->ctx.erreur == HCT_FAUTE_ARGUMENTS && n->op) {
+                const HctNoeud *f = x->ctx.fautif;
+                x->ctx.erreur = NULL;
+                hct_ctx_faute_txt(&x->ctx, f,
+                                  "Can't understand arguments of \"%s\".", n->op);
+            }
+            return;
         case HCTN_SI:            execute_si(x, n);      return;
         case HCTN_REPETE:        execute_repete(x, n);  return;
 

@@ -39,7 +39,7 @@
       -> hôte : doMenu « Background »
    doMenu "Background", zorglub()
   put "pas ici"
-      [ERR]    !! fonction inconnue : zorglub (v3, ligne 2 de button "Run the Script".mouseUp)
+      [ERR]    !! Can't understand "zorglub". (v3, ligne 2 de button "Run the Script".mouseUp)
    doMenu "Background","Edit"
       pile : Background
 

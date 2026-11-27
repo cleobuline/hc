@@ -42,7 +42,7 @@
 == 3. un nom inconnu : parti au recours, PAS avale par la liste ==
    (il dit desormais franchement qu'il ne connait pas ce nom)
    nExistePas(3)
-      [ERR]    !! fonction inconnue : nExistePas (v3, ligne 15 de button "B".essaie)
+      [ERR]    !! Can't understand "nExistePas". (v3, ligne 15 de button "B".essaie)
 
 == le bilan : aucune sonde de nom ne doit apparaitre ==
    — retours de la v3 vers l'ancien interpréteur —

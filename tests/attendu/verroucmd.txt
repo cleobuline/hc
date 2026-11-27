@@ -8,7 +8,7 @@
 == 2. lock error dialogs : l'erreur part en message ==
    lock error dialogs, puis une faute
       = true
-      [ERR]    !! fonction inconnue : zorglub (v3, ligne 4 de button "B".t)
+      [ERR]    !! Can't understand "zorglub". (v3, ligne 4 de button "B".t)
       = errorDialog a reçu le message
    au repos, la serrure est retirée
       = false

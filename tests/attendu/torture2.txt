@@ -1,6 +1,6 @@
 [v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
 108 reussites, aucun echec, 0 a mesurer.
-[ERR]    !! objet introuvable (v3, ligne 87 de button "TORTURE".sectionFaute)
+[ERR]    !! There is no card field "Absent". (v3, ligne 87 de button "TORTURE".sectionFaute)
 
 ───── champ « R » ─────
 == 1. la recherche
@@ -134,5 +134,5 @@
   (En HyperCard le script s'arrete ici ; en HC il continue.)
 
 == les erreurs levees, et elles sont VOULUES ==
-     !! objet introuvable (v3, ligne 87 de button "TORTURE".sectionFaute)
+     !! There is no card field "Absent". (v3, ligne 87 de button "TORTURE".sectionFaute)
 

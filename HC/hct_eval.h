@@ -283,6 +283,13 @@ void hct_ctx_faute_nom(HctContexte *ctx, const HctNoeud *n,
 /* Même chose, avec un format : « il n'y a pas de word de rang 0 dans ce champ ».
  * Composée dans ctx->message, comme la précédente, et pour la même raison —
  * hct_ctx_faute garde le pointeur du message, pas sa copie. */
+/* Un objet absent, dit comme HyperCard : « There is no card field "x". »
+ * quand on sait l'écrire, « objet introuvable » sinon. Voir hct_eval.c. */
+int  hct_phrase_objet_absent(const HctNoeud *n, char *out, size_t taille);
+void hct_ctx_faute_objet(HctContexte *ctx, const HctNoeud *n);
+/* La faute « propriété inconnue », que hct_exec réécrit au nom de la
+ * commande qui la porte : « Can't understand arguments of "put". ». */
+extern const char HCT_FAUTE_ARGUMENTS[];
 void hct_ctx_faute_txt(HctContexte *ctx, const HctNoeud *n,
                        const char *fmt, ...);
 

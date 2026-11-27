@@ -34,20 +34,20 @@
 
 == 4. un VRAI objet manquant reste nomme comme tel ==
    show sur un champ absent
-      [ERR]    !! objet introuvable : show field "Absent"
+      [ERR]    !! There is no bkgnd field "Absent".
         the result = No such object
    put into un champ absent
-      [ERR]    !! objet introuvable : put "x" into card field "Absent"
+      [ERR]    !! There is no card field "Absent".
         the result = No such object
    show sur un champ present
         the result = 
 
 == 5. deux fautes de suite : chacune garde la sienne ==
    objet absent, puis verbe inconnu
-      [ERR]    !! objet introuvable : show field "Absent"
+      [ERR]    !! There is no bkgnd field "Absent".
       [ERR]    !! ne sait pas faire : help
         the result = Can't understand
    verbe inconnu, puis objet absent
       [ERR]    !! ne sait pas faire : help
-      [ERR]    !! objet introuvable : show field "Absent"
+      [ERR]    !! There is no bkgnd field "Absent".
         the result = No such object

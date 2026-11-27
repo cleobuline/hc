@@ -50,6 +50,73 @@ void hct_ctx_faute(HctContexte *ctx, const HctNoeud *n, const char *msg)
     ctx->fautif = n;
 }
 
+/* LES TEXTES D'HYPERCARD POUR UN OBJET ABSENT, mesurés DANS HYPERCARD
+ * (Basilisk II) par l'utilisatrice le 27 novembre, dans la boîte de message :
+ *
+ *     put card field "zzz"     There is no card field "zzz".
+ *     hide button "zzz"        There is no card button "zzz".
+ *
+ * Un bouton sans portée est un bouton de CARTE, mesuré par la seconde ligne.
+ * NON MESURÉ, et déduit de la règle d'HyperTalk : un champ sans portée est
+ * un champ de FOND (« bkgnd field ») ; la forme d'un rang (« card field
+ * 3 ») et d'un id (« card field id 3 ») ; les cartes, fonds et piles, qui ne
+ * passent pas par ici et gardent leur texte d'avant.
+ *
+ * Rend 1 si la phrase est écrite : un bouton ou un champ, désigné par un
+ * nom, un rang ou un id écrits en clair dans le script. */
+int hct_phrase_objet_absent(const HctNoeud *n, char *out, size_t taille)
+{
+    while (n && n->genre == HCTN_OF && n->nfils > 0) n = n->fils[n->nfils - 1];
+    if (!n || n->genre != HCTN_OBJET || !out || taille == 0) return 0;
+    if (n->typeobj != HCT_OBJ_BUTTON && n->typeobj != HCT_OBJ_FIELD) return 0;
+    /* UN OBJET ÉCRIT SEUL, sans « of … ». « field "X" of card "Absente" »
+     * peut manquer par sa CARTE : nommer le champ accuserait le mauvais
+     * objet, avec assurance. Rejoué au réenregistrement des témoins, le 27
+     * novembre. Ce cas-là garde l'ancien texte, en attendant la mesure. */
+    if (n->nfils != 1 || !n->fils[0]) return 0;
+    const HctNoeud *d = n->fils[0];
+    if (d->genre != HCTN_CHAINE && d->genre != HCTN_NOMBRE) return 0;
+    int bouton = n->typeobj == HCT_OBJ_BUTTON;
+    const char *portee = n->portee == HCT_PORTEE_CARTE ? "card"
+                       : n->portee == HCT_PORTEE_FOND  ? "bkgnd"
+                       : bouton ? "card" : "bkgnd";
+    const char *type = bouton ? "button" : "field";
+    int l = d->jeton.len > 200 ? 200 : d->jeton.len;
+    switch (n->designateur) {
+    case HCT_DES_NOM:
+        snprintf(out, taille, "There is no %s %s \"%.*s\".", portee, type, l, d->jeton.deb);
+        return 1;
+    case HCT_DES_RANG:
+        snprintf(out, taille, "There is no %s %s %.*s.", portee, type, l, d->jeton.deb);
+        return 1;
+    case HCT_DES_ID:
+        snprintf(out, taille, "There is no %s %s id %.*s.", portee, type, l, d->jeton.deb);
+        return 1;
+    default:
+        return 0;
+    }
+}
+
+/* La faute d'un objet absent : la phrase d'HyperCard quand on sait l'écrire,
+ * l'ancien texte sinon. */
+void hct_ctx_faute_objet(HctContexte *ctx, const HctNoeud *n)
+{
+    char t[300];
+    if (hct_phrase_objet_absent(n, t, sizeof t))
+        hct_ctx_faute_txt(ctx, n, "%s", t);
+    else
+        hct_ctx_faute(ctx, n, "objet introuvable");
+}
+
+/* UNE PROPRIÉTÉ QUE PERSONNE NE CONNAÎT, sur un objet qui existe. HyperCard
+ * accuse la COMMANDE qui la porte — mesuré DANS HYPERCARD (Basilisk II) le
+ * 27 novembre : « put the zorglub of card 1 » dit « Can't understand
+ * arguments of "put". ». C'est hct_exec qui connaît la commande : il
+ * réécrit la faute en sortant de l'instruction (voir HCT_FAUTE_ARGUMENTS).
+ * Hors d'une commande — dans la condition d'un « if » —, le texte reste
+ * celui-ci : non mesuré. */
+const char HCT_FAUTE_ARGUMENTS[] = "propriété inconnue";
+
 void hct_ctx_faute_nom(HctContexte *ctx, const HctNoeud *n,
                        const char *quoi, const char *nom)
 {
@@ -185,11 +252,11 @@ static HctValeur arith(HctContexte *ctx, const HctNoeud *n, const char *op,
      * Un texte non vide et non numerique reste une faute : c'est la difference
      * entre une case laissee blanche et une donnee erronee. */
     if (!est_vide(a.txt) && !hct_est_nombre(a.txt)) {
-        hct_ctx_faute(ctx, n, "un nombre est attendu ici");
+        hct_ctx_faute(ctx, n, "Expected number here.");
         return hct_val_vide();
     }
     if (!est_vide(b.txt) && !hct_est_nombre(b.txt)) {
-        hct_ctx_faute(ctx, n, "un nombre est attendu ici");
+        hct_ctx_faute(ctx, n, "Expected number here.");
         return hct_val_vide();
     }
     /* LE SEUL ENDROIT QUI REGARDE LE NOMBRE BRUT.
@@ -272,14 +339,14 @@ static HctValeur arith(HctContexte *ctx, const HctNoeud *n, const char *op,
     }
     else if (!strcmp(op, "div")) {
         if (y == 0) {
-            hct_ctx_faute(ctx, n, "division entière par zéro");
+            hct_ctx_faute(ctx, n, "can't div by zero");
             return hct_val_vide();
         }
         r = trunc(x / y);
     }
     else if (!strcmp(op, "mod")) {
         if (y == 0) {
-            hct_ctx_faute(ctx, n, "modulo par zéro");
+            hct_ctx_faute(ctx, n, "can't mod by 0");
             return hct_val_vide();
         }
         r = fmod(x, y);
@@ -467,7 +534,7 @@ static HctValeur binaire(HctContexte *ctx, const HctNoeud *n)
         if (ctx->erreur) return a;
         int valide, va = hct_vers_bool(a.txt, &valide);
         if (!valide) {
-            hct_ctx_faute(ctx, n->fils[0], "true ou false attendu ici");
+            hct_ctx_faute(ctx, n->fils[0], "Expected true or false here.");
             hct_val_libere(&a);
             return hct_val_vide();
         }
@@ -479,7 +546,7 @@ static HctValeur binaire(HctContexte *ctx, const HctNoeud *n)
         if (ctx->erreur) return b;
         int vb = hct_vers_bool(b.txt, &valide);
         if (!valide) {
-            hct_ctx_faute(ctx, n->fils[1], "true ou false attendu ici");
+            hct_ctx_faute(ctx, n->fils[1], "Expected true or false here.");
             hct_val_libere(&b);
             return hct_val_vide();
         }
@@ -607,17 +674,17 @@ static HctValeur unaire(HctContexte *ctx, const HctNoeud *n)
     if (!strcmp(op, "not")) {
         int valide, v = hct_vers_bool(a.txt, &valide);
         if (!valide) {
-            hct_ctx_faute(ctx, n->fils[0], "true ou false attendu ici");
+            hct_ctx_faute(ctx, n->fils[0], "Expected true or false here.");
             r = hct_val_vide();
         } else r = hct_val_bool(!v);
     } else if (!strcmp(op, "neg")) {
         if (!hct_est_nombre(a.txt)) {
-            hct_ctx_faute(ctx, n->fils[0], "un nombre est attendu ici");
+            hct_ctx_faute(ctx, n->fils[0], "Expected number here.");
             r = hct_val_vide();
         } else r = hct_val_calcul(-nombre_de(a));
     } else {
         if (!hct_est_nombre(a.txt)) {
-            hct_ctx_faute(ctx, n->fils[0], "un nombre est attendu ici");
+            hct_ctx_faute(ctx, n->fils[0], "Expected number here.");
             r = hct_val_vide();
         } else r = hct_val_calcul(-nombre_de(a));
     }
@@ -860,7 +927,7 @@ static HctValeur appel_valeurs(HctContexte *ctx, const HctNoeud *n,
      * une. */
     int arite = arite_integree(nom);
     if (arite && nargs != arite) {
-        hct_ctx_faute_nom(ctx, n, "mauvais nombre d'arguments", nom);
+        hct_ctx_faute_txt(ctx, n, "Can't understand arguments of \"%s\".", nom);
         for (int i = 0; i < nargs; i++) hct_val_libere(&args[i]);
         free(args); free(nom);
         return hct_val_vide();
@@ -884,7 +951,7 @@ static HctValeur appel_valeurs(HctContexte *ctx, const HctNoeud *n,
                 args[i] = hct_val_nombre(0);
                 continue;
             }
-            hct_ctx_faute(ctx, n, "un nombre est attendu ici");
+            hct_ctx_faute(ctx, n, "Expected number here.");
             for (int k = 0; k < nargs; k++) hct_val_libere(&args[k]);
             free(args); free(nom);
             return hct_val_vide();
@@ -1168,7 +1235,9 @@ static HctValeur appel_valeurs(HctContexte *ctx, const HctNoeud *n,
          * naît neuf fois sur dix d'une faute de frappe : c'est justement le
          * nom qu'on veut lire. Toutes les autres fautes de nom de ce fichier
          * l'indiquent déjà ; celle-ci était la dernière à s'en passer. */
-        hct_ctx_faute_nom(ctx, n, "fonction inconnue", nom);
+        /* Mesuré DANS HYPERCARD (Basilisk II) le 27 novembre : « put zorglub(3) »
+         * dit « Can't understand "zorglub". ». */
+        hct_ctx_faute_txt(ctx, n, "Can't understand \"%s\".", nom);
         r = hct_val_vide();
     }
 
@@ -1251,7 +1320,7 @@ static int rang_de(HctContexte *ctx, const HctNoeud *n, int *ok)
     int r = 0;
     if (!ctx->erreur) {
         if (!hct_est_nombre(v.txt))
-            hct_ctx_faute(ctx, n, "un rang numérique est attendu ici");
+            hct_ctx_faute(ctx, n, "Expected integer here.");
         else {
             int hors;
             r = hct_vers_rang(v.txt, &hors);
@@ -1373,7 +1442,7 @@ static HctValeur objet(HctContexte *ctx, const HctNoeud *n)
     if (!ctx->hote.resout || !ctx->hote.lit_objet) {
         hct_ctx_faute(ctx, n, "aucun hôte pour résoudre cet objet");
     } else {
-        hct_ctx_faute(ctx, n, "objet introuvable");
+        hct_ctx_faute_objet(ctx, n);
     }
     return hct_val_vide();
 }
@@ -1698,9 +1767,9 @@ static HctValeur noeud_of(HctContexte *ctx, const HctNoeud *n)
          * cible non résolue le dit en rendant 1 depuis recours, et n'arrive
          * jamais ici. */
         if (!objet)
-            hct_ctx_faute(ctx, n, "objet introuvable");
+            hct_ctx_faute_objet(ctx, sur);
         else
-            hct_ctx_faute(ctx, n, "propriété inconnue");
+            hct_ctx_faute(ctx, n, HCT_FAUTE_ARGUMENTS);
         free(nom);
         return hct_val_vide();
     }

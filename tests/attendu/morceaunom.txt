@@ -26,4 +26,4 @@
    nom nu         textStyle of jamaisPose
 
 == 5. un champ absent arrête le gestionnaire, comme en direct ==
-   [ERR]    !! objet introuvable (v3, ligne 3 de button "B".mouseUp)
+   [ERR]    !! There is no bkgnd field "Absent". (v3, ligne 3 de button "B".mouseUp)

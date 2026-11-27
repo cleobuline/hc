@@ -57,7 +57,7 @@
          globale g = [5]
    gestionnaire figé : [mouseUp]
    -- une faute de commande dans un sous-gestionnaire
-      [ERR]    !! objet introuvable : hide button "Absent"
+      [ERR]    !! There is no card button "Absent".
          locale  dedans = [2]
          globale a = [7]
          globale c = [3]

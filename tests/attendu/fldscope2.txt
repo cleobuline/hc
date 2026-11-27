@@ -74,7 +74,7 @@
 >>> champ absent
 → message "mouseUp" à button "B"
    · traité par button "B"
-      !! objet introuvable (v3, ligne 3 de button "B".mouseUp)
+      !! There is no bkgnd field "pasLa". (v3, ligne 3 de button "B".mouseUp)
 >>> set du champ
 → message "mouseUp" à button "B"
    · traité par button "B"

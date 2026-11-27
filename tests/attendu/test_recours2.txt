@@ -10,7 +10,7 @@
 >>> objet inexistant
 → message "mouseUp" à button "GoBtn"
    · traité par button "GoBtn"
-      !! objet introuvable (v3, ligne 3 de button "GoBtn".mouseUp)
+      !! There is no card button 99. (v3, ligne 3 de button "GoBtn".mouseUp)
 >>> on clearScreen tl (choose tl tool)
 → message "mouseUp" à button "GoBtn"
    · traité par button "GoBtn"

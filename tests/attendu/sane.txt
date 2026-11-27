@@ -140,7 +140,7 @@
     la division, faute d'en connaître le code SANE — faux. Les deux
     opérations se ressemblent et HyperCard ne les traite pas pareil,
     ce qui est précisément pourquoi on mesure au lieu de déduire)
-   [ERR]    !! modulo par zéro (v3, ligne 3 de stack "SANE".essai)
+   [ERR]    !! can't mod by 0 (v3, ligne 3 de stack "SANE".essai)
    1
 === 9. « div » par zéro REFUSE aussi ===
    (MESURÉ : « put 7 div 0 » ET « put 0 div 0 » ouvrent tous deux
@@ -152,8 +152,8 @@
     sont des opérations ENTIÈRES, et l'arithmétique SANE qui
     fabrique INF et les NaN est celle des FLOTTANTS. Seule « / »
     y a droit)
-   [ERR]    !! division entière par zéro (v3, ligne 2 de stack "SANE".essai)
-   [ERR]    !! division entière par zéro (v3, ligne 2 de stack "SANE".essai)
+   [ERR]    !! can't div by zero (v3, ligne 2 de stack "SANE".essai)
+   [ERR]    !! can't div by zero (v3, ligne 2 de stack "SANE".essai)
    3
 === 9b. « divide … by 0 », la commande : une VALEUR ===
    (MESURÉ, et il le fallait, puisque les deux opérations d'à côté

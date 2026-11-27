@@ -38,4 +38,4 @@
 >>> bg btn ordinaire
 → message "mouseUp" à button "GoBtn"
    · traité par button "GoBtn"
-      !! objet introuvable (v3, ligne 3 de button "GoBtn".mouseUp)
+      !! There is no bkgnd button "GoBtn2". (v3, ligne 3 de button "GoBtn".mouseUp)

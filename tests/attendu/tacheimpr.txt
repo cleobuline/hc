@@ -81,7 +81,7 @@
       -> hôte : imprime 2 cartes : C4 C5
 
 == 10. un script arrêté par une erreur : le travail est abandonné ==
-      [ERR]    !! propriété inconnue (v3, ligne 4 de button "Imprimer".mouseUp)
+      [ERR]    !! Can't understand arguments of "put". (v3, ligne 4 de button "Imprimer".mouseUp)
       [journal]    → travail d'impression abandonné : le script s'est arrêté avant « close printing » (1 carte(s) non imprimée(s))
    -- ensuite, un print part de nouveau tout de suite :
    print card 4

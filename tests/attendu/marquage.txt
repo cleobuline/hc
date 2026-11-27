@@ -42,7 +42,7 @@
 == 5. une condition en faute arrête, et la carte reste la même ==
    unmark all cards
    mark cards where field "Absent" is empty
-      [ERR]    !! objet introuvable (v3, ligne 1)
+      [ERR]    !! There is no bkgnd field "Absent". (v3, ligne 1)
       marquées : aucune
    put the short name of this card
       = C2

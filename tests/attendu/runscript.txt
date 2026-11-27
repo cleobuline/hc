@@ -1,11 +1,11 @@
 [v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
 == 1. sans hôte qui réponde : les fenêtres le disent ==
    show tool window
-      [ERR]    !! fenêtre introuvable : Tools
+      [ERR]    !! No such window.
    put the visible of pattern window
-      [ERR]    !! fenêtre introuvable : Patterns (v3, ligne 2 de button "Run the Script".mouseUp)
+      [ERR]    !! No such window. (v3, ligne 2 de button "Run the Script".mouseUp)
    hide msg
-      [ERR]    !! fenêtre introuvable : Message
+      [ERR]    !! No such window.
 
 == 2. les mots-clés, écrits en clair ==
    put the visible of tool window

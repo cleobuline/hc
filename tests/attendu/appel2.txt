@@ -9,7 +9,7 @@
         (pas de gestionnaire dans button "B1")
       · traité par card "Une"
          [message box] avant
-         !! objet introuvable (v3, ligne 3 de card "Une".drawChart)
+         !! There is no card field "nExistePas". (v3, ligne 3 de card "Une".drawChart)
    — retours de la v3 vers l'ancien interpréteur —
       recours of width                         1
    — ce que l'ancien interprète exécute encore —

@@ -1,14 +1,14 @@
 [v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
 == 1. les quatre sortes d'erreur, depuis la boite ==
    propriete inconnue
-      [console]    !! propriété inconnue (v3, ligne 1)
-      >>> DIALOGUE :    !! propriété inconnue (v3, ligne 1)
+      [console]    !! Can't understand arguments of "put". (v3, ligne 1)
+      >>> DIALOGUE :    !! Can't understand arguments of "put". (v3, ligne 1)
           objet fautif : aucun
           ligne fautive : 0
       [dialogues ouverts : 1]
    objet introuvable
-      [console]    !! objet introuvable (v3, ligne 1)
-      >>> DIALOGUE :    !! objet introuvable (v3, ligne 1)
+      [console]    !! There is no bkgnd field "Absent". (v3, ligne 1)
+      >>> DIALOGUE :    !! There is no bkgnd field "Absent". (v3, ligne 1)
           objet fautif : aucun
           ligne fautive : 0
       [dialogues ouverts : 1]
@@ -19,8 +19,8 @@
           ligne fautive : 0
       [dialogues ouverts : 1]
    ligne refusee par l'analyseur
-      [console]    !! ne sait pas lire : repeat with i = 1 up to 5
-      >>> DIALOGUE :    !! ne sait pas lire : repeat with i = 1 up to 5
+      [console]    !! Can't understand "repeat".
+      >>> DIALOGUE :    !! Can't understand "repeat".
           objet fautif : aucun
           ligne fautive : 0
       [dialogues ouverts : 1]
@@ -38,23 +38,23 @@
 
 == 3. UN SEUL DIALOGUE, JAMAIS DEUX ==
    un gestionnaire fautif appele depuis la boite
-      [console]    !! propriété inconnue (v3, ligne 2 de card "Une".fautif)
-      >>> DIALOGUE :    !! propriété inconnue (v3, ligne 2 de card "Une".fautif)
+      [console]    !! Can't understand arguments of "put". (v3, ligne 2 de card "Une".fautif)
+      >>> DIALOGUE :    !! Can't understand arguments of "put". (v3, ligne 2 de card "Une".fautif)
 ligne 2 :  put the zorglub of me
           objet fautif : oui
           ligne fautive : 2
       [dialogues ouverts : 1]
    deux fautes sur une ligne
-      [console]    !! propriété inconnue (v3, ligne 1)
-      >>> DIALOGUE :    !! propriété inconnue (v3, ligne 1)
+      [console]    !! Can't understand arguments of "put". (v3, ligne 1)
+      >>> DIALOGUE :    !! Can't understand arguments of "put". (v3, ligne 1)
           objet fautif : aucun
           ligne fautive : 0
       [dialogues ouverts : 1]
 
 == 4. et le gestionnaire ordinaire n'a pas bouge ==
    un clic sur un bouton fautif
-      [console]    !! propriété inconnue (v3, ligne 2 de button "B".mouseUp)
-      >>> DIALOGUE :    !! propriété inconnue (v3, ligne 2 de button "B".mouseUp)
+      [console]    !! Can't understand arguments of "put". (v3, ligne 2 de button "B".mouseUp)
+      >>> DIALOGUE :    !! Can't understand arguments of "put". (v3, ligne 2 de button "B".mouseUp)
 ligne 2 :  put the zorglub of me
           objet fautif : oui
           ligne fautive : 2

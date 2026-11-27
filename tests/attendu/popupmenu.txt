@@ -71,6 +71,6 @@
 
 == 5. ce qui reste inconnu ==
    put PopUpMenu("Un",0,10,10,99)
-      [ERR]    !! fonction inconnue : PopUpMenu (v3, ligne 2 de button "Data".mouseUp)
+      [ERR]    !! Can't understand "PopUpMenu". (v3, ligne 2 de button "Data".mouseUp)
    put PopUpMenu("Un,Deux")
-      [ERR]    !! fonction inconnue : PopUpMenu (v3, ligne 2 de button "Data".mouseUp)
+      [ERR]    !! Can't understand "PopUpMenu". (v3, ligne 2 de button "Data".mouseUp)

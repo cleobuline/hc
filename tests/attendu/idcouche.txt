@@ -13,7 +13,7 @@
    sur la carte deux :
       card button "de la deux"
       bkgnd field "du fond"
-         !! objet introuvable (v3, ligne 2 de button "pilote".t)
+         !! There is no card field id 1. (v3, ligne 2 de button "pilote".t)
 
 == sans prefixe, le fond passe avant la carte ==
       texte du fond, sur la une
@@ -21,10 +21,10 @@
       texte du fond, sur la deux
 
 == une portee explicite ne se replie pas ==
-         !! objet introuvable (v3, ligne 2 de button "pilote".t)
-         !! objet introuvable (v3, ligne 2 de button "pilote".t)
+         !! There is no card field id 1. (v3, ligne 2 de button "pilote".t)
+         !! There is no card field id 1. (v3, ligne 2 de button "pilote".t)
       aucun
-         !! objet introuvable (v3, ligne 2 de button "pilote".t)
+         !! There is no bkgnd button id 1. (v3, ligne 2 de button "pilote".t)
       aucun
 
 == enregistre puis relu ==
