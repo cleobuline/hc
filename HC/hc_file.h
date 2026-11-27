@@ -13,6 +13,11 @@ int hc_save(Object *stack, const char *path);
  * façon dont une pile sans adresse en reçoit une. */
 int hc_save_copie(Object *stack, const char *path);
 
+/* L'empreinte de ce que l'enregistrement écrirait, SANS LE DESSIN : deux
+ * empreintes égales, la pile n'a pas changé hors peinture. 0 : inconnue (la
+ * mémoire a manqué). Voir hc_file.c. */
+unsigned long long hc_empreinte(Object *stack);
+
 /* Relit une pile. Renvoie NULL en cas d'échec. */
 Object *hc_load(const char *path);
 

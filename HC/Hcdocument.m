@@ -4,6 +4,7 @@
 
 #import "Hcdocument.h"
 #import "HCview.h"
+#import "hc_file.h"     /* hc_empreinte */
 #import "HCglobals.h"
 #import "HCdialogs.h"    /* hcicon_panel_stack_closing */
 #import "Hciconedit.h"   /* hcicon_edit_sync */
@@ -186,8 +187,50 @@ static HCDocument *gCurrentDoc = nil;
      * « the target » et « me » parleraient de la fenêtre qu'on vient de
      * quitter. */
     [d envoiePile:"openStack"];
+    /* L'empreinte APRÈS openStack : ce qu'une pile règle en s'ouvrant —
+     * vider un champ, poser un compteur — n'est pas une modification de
+     * l'utilisatrice, et ne doit pas faire poser la question. */
+    hcv_pile_peinte_oublie(stack);
+    d.empreinte = hc_empreinte(stack);
     [v setNeedsDisplay:YES];
     return d;
+}
+
+- (BOOL)estModifie {
+    if (!self.stack) return NO;
+    if (hcv_pile_peinte(self.stack)) return YES;
+    unsigned long long e = hc_empreinte(self.stack);
+    return e == 0 || e != self.empreinte;
+}
+
+/* LA QUESTION DU MAC : Save, Don't Save, Cancel — l'ordre et les mots que
+ * macOS emploie partout. HyperCard ne la posait jamais : il enregistrait en
+ * continu. C'est une protection propre à HC, qui ne touche à aucun mot
+ * d'HyperTalk. */
+- (BOOL)demandeSiModifie {
+    if (![self estModifie]) return YES;
+    [self.window makeKeyAndOrderFront:nil];
+    NSString *nom = self.path ? [[self.path lastPathComponent] stringByDeletingPathExtension]
+                              : hcv_texte(self.stack->name ? self.stack->name : "Untitled");
+    NSAlert *a = [[NSAlert alloc] init];
+    [a setMessageText:[NSString stringWithFormat:
+        @"Do you want to save the changes made to the stack \u201C%@\u201D?", nom]];
+    [a setInformativeText:@"Your changes will be lost if you don't save them."];
+    [a addButtonWithTitle:@"Save"];
+    [a addButtonWithTitle:@"Cancel"];
+    NSButton *non = [a addButtonWithTitle:@"Don't Save"];
+    [non setKeyEquivalent:@"d"];
+    [non setKeyEquivalentModifierMask:NSEventModifierFlagCommand];
+    NSModalResponse r = [a runModal];
+    if (r == NSAlertSecondButtonReturn) return NO;          /* Cancel */
+    if (r == NSAlertThirdButtonReturn)  return YES;         /* Don't Save */
+    return hc_enregistre_document(self);                     /* Save */
+}
+
+/* La case rouge de la fenêtre : la question d'abord, s'il y a lieu. */
+- (BOOL)windowShouldClose:(NSWindow *)w {
+    (void)w;
+    return [self demandeSiModifie];
 }
 
 - (void)registerDocument {
@@ -317,6 +360,7 @@ static HCDocument *gCurrentDoc = nil;
      * La carte courante doit être ici aussi, pour la même raison qu'à
      * l'ouverture. */
     [self envoiePile:"closeStack"];
+    hcv_pile_peinte_oublie(pile);
     [self.view resetForNewStack];
     [self.view clearPaintCache];
     [self unregisterDocument];

@@ -261,8 +261,13 @@ static void put_block(FILE *f, const char *tag, const char *text)
     put_block_wrap(f, tag, text, 0);   /* scripts, contenus : pas de découpage */
 }
 
+/* Vrai pendant le calcul d'une EMPREINTE (hc_empreinte) : le dessin n'y
+ * entre pas. Voir là-bas pourquoi. */
+static int g_sans_peinture = 0;
+
 static void put_paint(FILE *f, const char *b64)
 {
+    if (g_sans_peinture) return;
     put_block_wrap(f, "paint", b64, 1);   /* base64 : découpé en lignes courtes */
 }
 
@@ -554,86 +559,11 @@ static void dossier_jusqu_au_disque(const char *path)
  *
  * En cas d'échec, le fichier temporaire est retiré et l'ancienne pile est
  * intacte — l'utilisateur perd sa sauvegarde, pas son travail. */
-static int ecrit_pile(Object *stack, const char *path, int adopte)
+/* LE CONTENU D'UNE PILE, tel qu'il s'écrit : l'enregistrement le dirige vers
+ * le fichier, l'empreinte vers la mémoire. Un seul écrivain, pour que les
+ * deux ne puissent pas diverger. */
+static void ecrit_contenu(Object *stack, FILE *f)
 {
-    if (!stack || stack->type != OBJ_STACK || !path) return -1;
-
-    /* Nom temporaire IMPRÉVISIBLE, par mkstemp, et non « <chemin>.tmp ».
-     *
-     * Le nom fixe avait deux défauts dans un répertoire partagé : il écrasait
-     * sans prévenir un fichier qui portait déjà ce nom, et il suffisait d'y
-     * poser un lien symbolique pour faire écrire la sauvegarde ailleurs.
-     * mkstemp crée le fichier lui-même, en exclusivité, avec un nom que
-     * personne ne peut deviner.
-     *
-     * Il reste dans le MÊME répertoire que la destination : rename() n'est
-     * atomique qu'à l'intérieur d'un système de fichiers, et c'est cette
-     * atomicité qui garantit qu'une sauvegarde interrompue laisse l'original
-     * intact. */
-    size_t lp = strlen(path);
-    char *tmp = malloc(lp + 12);
-    if (!tmp) return -1;
-    memcpy(tmp, path, lp);
-    memcpy(tmp + lp, ".XXXXXX", 8);
-
-    int fd = mkstemp(tmp);
-    if (fd < 0) { free(tmp); return -1; }
-
-    /* LES PERMISSIONS DU FICHIER REMPLACÉ SURVIVENT À LA SAUVEGARDE.
-     *
-     * mkstemp crée en 0600 — c'est bien ce qu'on veut d'un temporaire, dont
-     * personne d'autre n'a à lire le contenu pendant qu'on l'écrit. Mais
-     * rename() lui donne ensuite le nom du document, avec ses permissions à
-     * lui : une pile en 0644, partagée par un groupe ou publiée par un serveur
-     * de fichiers, repassait en 0600 à chaque enregistrement. Mesuré :
-     *
-     *     avant :  -rw-r--r--
-     *     après :  -rw-------
-     *
-     * Ce n'est pas le contenu de la pile, mais c'est bien le DOCUMENT de
-     * l'utilisateur qui change sous lui, sans qu'on le lui dise.
-     *
-     * On recopie donc le mode de l'original. Pour une pile neuve, il n'y a pas
-     * d'original : on prend ce que tout programme prend, 0666 filtré par le
-     * umask, plutôt que le 0600 d'un temporaire.
-     *
-     * Best-effort : un fchmod qui échoue ne doit pas faire échouer une
-     * sauvegarde par ailleurs valide — l'utilisateur garderait ses données au
-     * prix de ses permissions, jamais l'inverse.
-     *
-     * Ce que cela NE fait PAS : sous macOS, remplacer le fichier par un
-     * nouvel inode perd aussi les ACL et les attributs étendus (étiquettes du
-     * Finder comprises). copyfile(3) saurait les reporter ; ce code-là ne
-     * peut pas être exercé par la suite, qui tourne sous Linux, et il n'est
-     * donc pas écrit ici. */
-    {
-        struct stat sb;
-        if (stat(path, &sb) == 0) {
-            if (fchmod(fd, sb.st_mode & 07777) != 0) { /* tant pis */ }
-        } else {
-            mode_t m = umask(0); umask(m);
-            if (fchmod(fd, (mode_t)(0666 & ~m)) != 0) { /* tant pis */ }
-        }
-    }
-
-    FILE *f = fdopen(fd, "w");
-    if (!f) { close(fd); remove(tmp); free(tmp); return -1; }
-
-    /* LE NUMÉRO DE FORMAT, ET POURQUOI IL ARRIVE MAINTENANT.
-     *
-     * La version 2 écrit les blocs de texte exactement : un « | » par
-     * segment, segment vide final compris, si bien qu'un champ relu est
-     * identique octet pour octet à ce qu'il était. La version 1 ne le
-     * pouvait pas — « abc » et « abc\n » y donnaient le même fichier.
-     *
-     * Les deux lectures ne sont donc pas interchangeables, et il faut savoir
-     * laquelle appliquer. Sans ce numéro, relire un ancien fichier à la
-     * nouvelle règle lui retirerait un saut de ligne par bloc : l'ancien
-     * écrivain n'écrivait pas le segment vide final, mais l'ancien lecteur en
-     * fabriquait un. Le numéro rend le choix explicite plutôt que deviné.
-     *
-     * Un fichier sans ligne « format » est de la version 1, par construction :
-     * elle n'existait pas quand ils ont été écrits. */
     fprintf(f, "-- pile HyperCard (format maison)\n");
     fprintf(f, "format %d\n\n", HC_FORMAT_MAX);
 
@@ -744,6 +674,89 @@ static int ecrit_pile(Object *stack, const char *path, int adopte)
      * n'a de sens que si l'écrivain la pose toujours — d'où le numéro de
      * format, qui dit au lecteur s'il a le droit de l'exiger. */
     fprintf(f, "end hc-file\n");
+}
+
+static int ecrit_pile(Object *stack, const char *path, int adopte)
+{
+    if (!stack || stack->type != OBJ_STACK || !path) return -1;
+
+    /* Nom temporaire IMPRÉVISIBLE, par mkstemp, et non « <chemin>.tmp ».
+     *
+     * Le nom fixe avait deux défauts dans un répertoire partagé : il écrasait
+     * sans prévenir un fichier qui portait déjà ce nom, et il suffisait d'y
+     * poser un lien symbolique pour faire écrire la sauvegarde ailleurs.
+     * mkstemp crée le fichier lui-même, en exclusivité, avec un nom que
+     * personne ne peut deviner.
+     *
+     * Il reste dans le MÊME répertoire que la destination : rename() n'est
+     * atomique qu'à l'intérieur d'un système de fichiers, et c'est cette
+     * atomicité qui garantit qu'une sauvegarde interrompue laisse l'original
+     * intact. */
+    size_t lp = strlen(path);
+    char *tmp = malloc(lp + 12);
+    if (!tmp) return -1;
+    memcpy(tmp, path, lp);
+    memcpy(tmp + lp, ".XXXXXX", 8);
+
+    int fd = mkstemp(tmp);
+    if (fd < 0) { free(tmp); return -1; }
+
+    /* LES PERMISSIONS DU FICHIER REMPLACÉ SURVIVENT À LA SAUVEGARDE.
+     *
+     * mkstemp crée en 0600 — c'est bien ce qu'on veut d'un temporaire, dont
+     * personne d'autre n'a à lire le contenu pendant qu'on l'écrit. Mais
+     * rename() lui donne ensuite le nom du document, avec ses permissions à
+     * lui : une pile en 0644, partagée par un groupe ou publiée par un serveur
+     * de fichiers, repassait en 0600 à chaque enregistrement. Mesuré :
+     *
+     *     avant :  -rw-r--r--
+     *     après :  -rw-------
+     *
+     * Ce n'est pas le contenu de la pile, mais c'est bien le DOCUMENT de
+     * l'utilisateur qui change sous lui, sans qu'on le lui dise.
+     *
+     * On recopie donc le mode de l'original. Pour une pile neuve, il n'y a pas
+     * d'original : on prend ce que tout programme prend, 0666 filtré par le
+     * umask, plutôt que le 0600 d'un temporaire.
+     *
+     * Best-effort : un fchmod qui échoue ne doit pas faire échouer une
+     * sauvegarde par ailleurs valide — l'utilisateur garderait ses données au
+     * prix de ses permissions, jamais l'inverse.
+     *
+     * Ce que cela NE fait PAS : sous macOS, remplacer le fichier par un
+     * nouvel inode perd aussi les ACL et les attributs étendus (étiquettes du
+     * Finder comprises). copyfile(3) saurait les reporter ; ce code-là ne
+     * peut pas être exercé par la suite, qui tourne sous Linux, et il n'est
+     * donc pas écrit ici. */
+    {
+        struct stat sb;
+        if (stat(path, &sb) == 0) {
+            if (fchmod(fd, sb.st_mode & 07777) != 0) { /* tant pis */ }
+        } else {
+            mode_t m = umask(0); umask(m);
+            if (fchmod(fd, (mode_t)(0666 & ~m)) != 0) { /* tant pis */ }
+        }
+    }
+
+    FILE *f = fdopen(fd, "w");
+    if (!f) { close(fd); remove(tmp); free(tmp); return -1; }
+
+    /* LE NUMÉRO DE FORMAT, ET POURQUOI IL ARRIVE MAINTENANT.
+     *
+     * La version 2 écrit les blocs de texte exactement : un « | » par
+     * segment, segment vide final compris, si bien qu'un champ relu est
+     * identique octet pour octet à ce qu'il était. La version 1 ne le
+     * pouvait pas — « abc » et « abc\n » y donnaient le même fichier.
+     *
+     * Les deux lectures ne sont donc pas interchangeables, et il faut savoir
+     * laquelle appliquer. Sans ce numéro, relire un ancien fichier à la
+     * nouvelle règle lui retirerait un saut de ligne par bloc : l'ancien
+     * écrivain n'écrivait pas le segment vide final, mais l'ancien lecteur en
+     * fabriquait un. Le numéro rend le choix explicite plutôt que deviné.
+     *
+     * Un fichier sans ligne « format » est de la version 1, par construction :
+     * elle n'existait pas quand ils ont été écrits. */
+    ecrit_contenu(stack, f);
 
     /* Les deux vérifications comptent : ferror voit ce qui a échoué en
      * cours de route, fclose ce qui a échoué en vidant le dernier bloc.
@@ -792,6 +805,42 @@ int hc_save(Object *stack, const char *path)
 int hc_save_copie(Object *stack, const char *path)
 {
     return ecrit_pile(stack, path, 0);
+}
+
+/* L'EMPREINTE D'UNE PILE : pour savoir, à la fermeture, si elle a changé
+ * depuis qu'on l'a ouverte ou enregistrée. Demandé par l'utilisatrice le 27
+ * novembre, après avoir perdu une carte en fermant une pile modifiée : HC ne
+ * demandait rien, et HyperCard, qui enregistrait en continu, n'avait pas à
+ * le faire.
+ *
+ * C'est ce que l'enregistrement écrirait — par le même écrivain,
+ * ecrit_contenu —, haché (FNV-1a sur 64 bits). SANS LE DESSIN : il vit dans
+ * les calques de l'interface et ne revient au noyau qu'à l'enregistrement,
+ * réencodé en PNG, donc avec d'autres octets même sans retouche. L'interface
+ * tient pour cela sa propre marque, « on a peint sur cette pile ».
+ *
+ * Rend 0 si la mémoire manque : l'appelant, faute de mieux, croira la pile
+ * modifiée, et posera la question une fois de trop plutôt que de perdre. */
+unsigned long long hc_empreinte(Object *stack)
+{
+    if (!stack || stack->type != OBJ_STACK) return 0;
+    char *tampon = NULL;
+    size_t taille = 0;
+    FILE *f = open_memstream(&tampon, &taille);
+    if (!f) return 0;
+    g_sans_peinture = 1;
+    ecrit_contenu(stack, f);
+    g_sans_peinture = 0;
+    int mauvais = ferror(f);
+    if (fclose(f) != 0) mauvais = 1;
+    if (mauvais || !tampon) { free(tampon); return 0; }
+    unsigned long long h = 1469598103934665603ULL;
+    for (size_t k = 0; k < taille; k++) {
+        h ^= (unsigned char)tampon[k];
+        h *= 1099511628211ULL;
+    }
+    free(tampon);
+    return h ? h : 1;               /* 0 est réservé à « inconnue » */
 }
 
 /* ==================== lecture ==================== */
