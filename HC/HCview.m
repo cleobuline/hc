@@ -5515,11 +5515,11 @@ static char kHcvMenuGestionnaires;
  *   Step       la ligne suivante du même gestionnaire          (Cmd-S)
  *   Step Into  la ligne suivante, même dans un gestionnaire appelé (Cmd-I)
  *   Go         jusqu'au prochain point d'arrêt                 (Cmd-G)
- *   Abort      arrêter le script                               (Cmd-.)
+ *   Abort      arrêter le script                               (Cmd-A)
  *
  * et, dessous, les variables : les locales du gestionnaire, puis les
- * globales (hc_debug_variables) — le Variable Watcher d'HyperCard, en lecture
- * seule pour commencer.
+ * globales (hc_debug_variables) — le Variable Watcher d'HyperCard, qu'on
+ * peut modifier pendant la pause (voir HCDebogueur, plus bas).
  *
  * Le panneau est MODAL : pendant la pause, le reste de HC ne répond pas, et
  * le script attend, suspendu dans la pile d'appels. C'est le plus sûr pour
@@ -5540,10 +5540,30 @@ static char kHcvMenuGestionnaires;
  *
  * Écrit sans pouvoir lancer AppKit ici : compilé par le job macOS de
  * l'intégration, pas exécuté. */
-@interface HCDebogueur : NSObject
+/* LE VARIABLE WATCHER, MODIFIABLE.
+ *
+ * MESURÉ DANS HYPERCARD (Basilisk II), sur la capture de l'utilisatrice du
+ * 26 novembre : en tête le nom du gestionnaire (« mouseUp »), une liste à
+ * deux colonnes — le nom, la valeur —, et dessous une zone pour la valeur
+ * de la variable choisie. HC reprend cette forme : la liste (Name, Value),
+ * et dessous la valeur ENTIÈRE de la ligne choisie, que l'on modifie
+ * pendant la pause ; chaque frappe l'écrit (hc_debug_variable_pose), et
+ * Step ou Go repartent avec elle.
+ *
+ * Après une erreur (le bouton « Debug »), les variables sont figées, le
+ * script est fini : la zone se lit, elle ne s'écrit pas.
+ *
+ * NON MESURÉ : comment HyperCard valide une modification (Retour, Entrée,
+ * un clic ailleurs) ; ici, chaque frappe compte. Comment il distingue les
+ * globales ; ici, « global » devant le nom. */
+@interface HCDebogueur : NSObject <NSTableViewDataSource, NSTableViewDelegate,
+                                   NSTextViewDelegate>
 @property (nonatomic, strong) NSPanel *panneau;
 @property (nonatomic, strong) NSTextField *ou;
-@property (nonatomic, strong) NSTextView *vars;
+@property (nonatomic, strong) NSTableView *table;
+@property (nonatomic, strong) NSTextView *valeur;
+@property (nonatomic, strong) NSMutableArray<NSMutableDictionary *> *lignes;
+@property (nonatomic) BOOL fige;                               /* après une erreur */
 @property (nonatomic, strong) NSArray<NSButton *> *avancer;   /* Step, Step Into, Go */
 @end
 
@@ -5551,9 +5571,9 @@ static HCDebogueur *gDebogueur;
 
 static void hcv_debug_une_var(void *u, const char *nom, const char *val, int globale)
 {
-    NSMutableString *t = (__bridge NSMutableString *)u;
-    (void)globale;
-    [t appendFormat:@"  %@ = %@\n", hcv_texte(nom), hcv_texte(val)];
+    NSMutableArray *t = (__bridge NSMutableArray *)u;
+    [t addObject:[@{ @"nom": hcv_texte(nom), @"val": hcv_texte(val),
+                     @"globale": @(globale) } mutableCopy]];
 }
 
 @implementation HCDebogueur
@@ -5574,34 +5594,114 @@ static void hcv_debug_une_var(void *u, const char *nom, const char *val, int glo
 
 - (void)construis {
     if (self.panneau) return;
+    self.lignes = [NSMutableArray array];
     self.panneau = [[NSPanel alloc]
-        initWithContentRect:NSMakeRect(320, 120, 420, 300)
+        initWithContentRect:NSMakeRect(320, 120, 420, 360)
                   styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskResizable)
                     backing:NSBackingStoreBuffered
                       defer:NO];
     [self.panneau setTitle:@"Debugger"];
     [self.panneau setReleasedWhenClosed:NO];
+    NSView *v = [self.panneau contentView];
 
     self.ou = [NSTextField labelWithString:@""];
-    [self.ou setFrame:NSMakeRect(10, 268, 400, 20)];
+    [self.ou setFrame:NSMakeRect(10, 330, 400, 20)];
     [self.ou setAutoresizingMask:NSViewWidthSizable | NSViewMinYMargin];
-    [[self.panneau contentView] addSubview:self.ou];
+    [v addSubview:self.ou];
 
-    NSScrollView *sc = [[NSScrollView alloc] initWithFrame:NSMakeRect(10, 50, 400, 212)];
-    [sc setHasVerticalScroller:YES];
-    [sc setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
-    self.vars = [[NSTextView alloc] initWithFrame:[[sc contentView] bounds]];
-    [self.vars setEditable:NO];
-    [self.vars setFont:[NSFont fontWithName:@"Monaco" size:11]];
-    [self.vars setAutoresizingMask:NSViewWidthSizable];
-    [sc setDocumentView:self.vars];
-    [[self.panneau contentView] addSubview:sc];
+    /* La liste : Name, Value. */
+    NSScrollView *sl = [[NSScrollView alloc] initWithFrame:NSMakeRect(10, 140, 400, 184)];
+    [sl setHasVerticalScroller:YES];
+    [sl setBorderType:NSBezelBorder];
+    [sl setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
+    self.table = [[NSTableView alloc] initWithFrame:[[sl contentView] bounds]];
+    NSTableColumn *cn = [[NSTableColumn alloc] initWithIdentifier:@"nom"];
+    [[cn headerCell] setStringValue:@"Name"];
+    [cn setWidth:130];
+    [cn setEditable:NO];
+    NSTableColumn *cv = [[NSTableColumn alloc] initWithIdentifier:@"val"];
+    [[cv headerCell] setStringValue:@"Value"];
+    [cv setWidth:250];
+    [cv setEditable:NO];
+    [cv setResizingMask:NSTableColumnAutoresizingMask];
+    [self.table addTableColumn:cn];
+    [self.table addTableColumn:cv];
+    [self.table setColumnAutoresizingStyle:NSTableViewLastColumnOnlyAutoresizingStyle];
+    [self.table setDataSource:self];
+    [self.table setDelegate:self];
+    [self.table setFont:[NSFont fontWithName:@"Monaco" size:11]];
+    [sl setDocumentView:self.table];
+    [v addSubview:sl];
+
+    /* Dessous, la valeur entière de la variable choisie. */
+    NSScrollView *se = [[NSScrollView alloc] initWithFrame:NSMakeRect(10, 50, 400, 84)];
+    [se setHasVerticalScroller:YES];
+    [se setBorderType:NSBezelBorder];
+    [se setAutoresizingMask:NSViewWidthSizable | NSViewMaxYMargin];
+    self.valeur = [[NSTextView alloc] initWithFrame:[[se contentView] bounds]];
+    [self.valeur setFont:[NSFont fontWithName:@"Monaco" size:11]];
+    [self.valeur setAutoresizingMask:NSViewWidthSizable];
+    [self.valeur setRichText:NO];
+    [self.valeur setAutomaticQuoteSubstitutionEnabled:NO];
+    [self.valeur setAutomaticDashSubstitutionEnabled:NO];
+    [self.valeur setAutomaticTextReplacementEnabled:NO];
+    [self.valeur setDelegate:self];
+    [se setDocumentView:self.valeur];
+    [v addSubview:se];
 
     self.avancer = @[
         [self bouton:@"Step"      touche:@"s" geste:HC_DEBUG_PAS        x:10],
         [self bouton:@"Step Into" touche:@"i" geste:HC_DEBUG_PAS_DEDANS x:110],
         [self bouton:@"Go"        touche:@"g" geste:HC_DEBUG_CONTINUE   x:210] ];
     [self bouton:@"Abort"     touche:@"a" geste:HC_DEBUG_ABANDON    x:310];
+}
+
+- (NSInteger)numberOfRowsInTableView:(NSTableView *)tv {
+    (void)tv;
+    return (NSInteger)[self.lignes count];
+}
+
+- (id)tableView:(NSTableView *)tv objectValueForTableColumn:(NSTableColumn *)col
+            row:(NSInteger)r {
+    (void)tv;
+    if (r < 0 || r >= (NSInteger)[self.lignes count]) return @"";
+    NSDictionary *l = self.lignes[(NSUInteger)r];
+    if ([[col identifier] isEqualToString:@"nom"])
+        return [l[@"globale"] boolValue]
+            ? [@"global " stringByAppendingString:l[@"nom"]] : l[@"nom"];
+    /* Une valeur de plusieurs lignes : la première, et la suite en bas. */
+    NSString *val = l[@"val"];
+    NSRange nl = [val rangeOfCharacterFromSet:[NSCharacterSet newlineCharacterSet]];
+    return nl.location == NSNotFound ? val
+        : [[val substringToIndex:nl.location] stringByAppendingString:@" …"];
+}
+
+- (void)montreValeurChoisie {
+    NSInteger r = [self.table selectedRow];
+    BOOL ok = r >= 0 && r < (NSInteger)[self.lignes count];
+    [self.valeur setString:ok ? self.lignes[(NSUInteger)r][@"val"] : @""];
+    [self.valeur setEditable:ok && !self.fige];
+}
+
+- (void)tableViewSelectionDidChange:(NSNotification *)n {
+    (void)n;
+    [self montreValeurChoisie];
+}
+
+/* Chaque frappe écrit la variable : Step ou Go repartent avec elle. */
+- (void)textDidChange:(NSNotification *)n {
+    (void)n;
+    if (self.fige) return;
+    NSInteger r = [self.table selectedRow];
+    if (r < 0 || r >= (NSInteger)[self.lignes count]) return;
+    NSMutableDictionary *l = self.lignes[(NSUInteger)r];
+    NSString *t = [[self.valeur string] copy];
+    if (hc_debug_variable_pose([l[@"nom"] UTF8String], [l[@"globale"] intValue],
+                               [t UTF8String])) {
+        l[@"val"] = t;
+        [self.table reloadDataForRowIndexes:[NSIndexSet indexSetWithIndex:(NSUInteger)r]
+                              columnIndexes:[NSIndexSet indexSetWithIndex:1]];
+    }
 }
 
 - (void)geste:(id)sender {
@@ -5616,14 +5716,35 @@ static void hcv_debug_une_var(void *u, const char *nom, const char *val, int glo
           erreur:(BOOL)erreur {
     [self construis];
     for (NSButton *b in self.avancer) [b setEnabled:!erreur];
+    self.fige = erreur;
 
-    NSMutableString *t = [NSMutableString string];
-    [t appendString:@"Variables:\n"];
+    /* La variable choisie reste choisie d'un pas à l'autre, si elle existe
+     * encore : on suit une valeur en avançant. */
+    NSString *choisie = nil;
+    NSInteger r0 = [self.table selectedRow];
+    if (r0 >= 0 && r0 < (NSInteger)[self.lignes count])
+        choisie = self.lignes[(NSUInteger)r0][@"nom"];
+
+    NSMutableArray *t = [NSMutableArray array];
     if (erreur)
         message = hc_debug_erreur_variables(hcv_debug_une_var, (__bridge void *)t);
     else
         hc_debug_variables(hcv_debug_une_var, (__bridge void *)t);
-    [self.vars setString:t];
+    self.lignes = t;
+    [self.table reloadData];
+    NSInteger sel = [t count] ? 0 : -1;
+    if (choisie)
+        for (NSUInteger i = 0; i < [t count]; i++)
+            if ([t[i][@"nom"] caseInsensitiveCompare:choisie] == NSOrderedSame) {
+                sel = (NSInteger)i;
+                break;
+            }
+    if (sel >= 0)
+        [self.table selectRowIndexes:[NSIndexSet indexSetWithIndex:(NSUInteger)sel]
+                byExtendingSelection:NO];
+    else
+        [self.table deselectAll:nil];
+    [self montreValeurChoisie];
 
     char d[1100];
     hc_describe(o, d, sizeof d);

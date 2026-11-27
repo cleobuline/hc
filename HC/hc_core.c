@@ -4742,6 +4742,32 @@ const char *hc_debug_erreur_variables(void (*cb)(void *u, const char *nom,
     return g_fige_message;
 }
 
+static int frame_has_global(Frame *f, const char *name);
+/* ÉCRIRE UNE VARIABLE PENDANT LA PAUSE : le Variable Watcher modifiable.
+ *
+ * Une locale ne s'écrit que si elle existe déjà dans le gestionnaire arrêté
+ * — on corrige une valeur, on n'invente pas de variable —, et pas si elle
+ * y est déclarée globale : elle vit alors dans les globales, où on l'écrit.
+ * Une globale s'écrit dans les globales, déclarée ici ou non. Rend 1 si
+ * c'est écrit. Appelé par l'hôte pendant debug_pause, et seulement là. */
+static void var_set(const char *name, const char *val);
+int hc_debug_variable_pose(const char *nom, int globale, const char *valeur)
+{
+    if (!nom || !*nom) return 0;
+    Frame *f = globale ? &g_globals : g_frame;
+    if (!f) return 0;
+    int trouve = 0;
+    for (int i = 0; i < f->n && !trouve; i++)
+        if (ci_equal(f->v[i].name, nom)) trouve = 1;
+    if (!trouve) return 0;
+    if (!globale && frame_has_global(g_frame, nom)) return 0;
+    Frame *sauve = g_frame;
+    if (globale) g_frame = NULL;        /* frame_for rend alors les globales */
+    var_set(nom, valeur ? valeur : "");
+    g_frame = sauve;
+    return 1;
+}
+
 static int frame_has_global(Frame *f, const char *name)
 {
     if (!f) return 0;

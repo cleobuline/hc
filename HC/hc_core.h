@@ -1213,6 +1213,10 @@ int     hc_debug_points(Object *o, int *lignes, int max);
  * gestionnaire en cours (globale = 0), puis toutes les globales (1). */
 void    hc_debug_variables(void (*cb)(void *u, const char *nom, const char *val,
                                       int globale), void *u);
+/* Écrire une variable pendant la pause (le Variable Watcher modifiable) :
+ * une locale existante du gestionnaire arrêté (globale = 0), ou une globale
+ * existante (1). Rend 1 si c'est écrit, 0 sinon. */
+int     hc_debug_variable_pose(const char *nom, int globale, const char *valeur);
 /* Les mêmes, FIGÉES au moment de la dernière erreur d'exécution, pour le
  * bouton « Debug » du dialogue d'erreur, qui paraît quand le script est fini.
  * Rend le nom du gestionnaire arrêté ("" hors gestionnaire). */

@@ -56,6 +56,8 @@ static void une_var(void *u, const char *nom, const char *val, int globale)
 
 static int g_montre_vars = 0;
 
+static int g_ecrit = 0;
+
 static int pause(Object *o, const char *message, int l)
 {
     char qui[64];
@@ -63,6 +65,13 @@ static int pause(Object *o, const char *message, int l)
     int g = g_i < g_ngestes ? g_gestes[g_i++] : HC_DEBUG_CONTINUE;
     printf("      [ARRÊT] %s.%s ligne %d -> %s\n", qui, message, l, nom_geste[g]);
     if (g_montre_vars) hc_debug_variables(une_var, NULL);
+    if (g_ecrit) {
+        printf("      écrire x = 99 (locale) : %d\n", hc_debug_variable_pose("x", 0, "99"));
+        printf("      écrire g = vert (globale) : %d\n", hc_debug_variable_pose("g", 1, "vert"));
+        printf("      écrire absente (locale) : %d\n", hc_debug_variable_pose("absente", 0, "1"));
+        printf("      écrire absente (globale) : %d\n", hc_debug_variable_pose("absente", 1, "1"));
+        printf("      écrire g comme locale : %d\n", hc_debug_variable_pose("g", 0, "1"));
+    }
     return g;
 }
 
@@ -196,6 +205,16 @@ int main(void)
     hc_send(B, "mouseUp");
     { const char *m = hc_debug_erreur_variables(une_var, NULL);
       printf("   gestionnaire figé : [%s]\n", m); }
+
+    puts("\n== 9. écrire une variable pendant la pause ==");
+    hc_set_script(B, "on mouseUp\n  global g\n  put 1 into x\n  put \"rouge\" into g\n"
+                     "  debug checkpoint\n  put \"x=\" & x & \" g=\" & g\nend mouseUp\n");
+    h.debug_pause = pause;              /* ôté au cas 7 */
+    g_ecrit = 1;
+    { int g[] = { HC_DEBUG_CONTINUE }; g_gestes = g; g_ngestes = 1; g_i = 0;
+      hc_send(B, "mouseUp"); }
+    g_ecrit = 0;
+    printf("   hors pause, une locale : %d\n", hc_debug_variable_pose("x", 0, "5"));
     hc_free(st);
     return 0;
 }

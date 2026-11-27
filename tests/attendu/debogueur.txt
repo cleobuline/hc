@@ -63,3 +63,13 @@
          globale c = [3]
          globale g = [5]
    gestionnaire figé : [bas]
+
+== 9. écrire une variable pendant la pause ==
+      [ARRÊT] button "B".mouseUp ligne 5 -> continuer
+      écrire x = 99 (locale) : 1
+      écrire g = vert (globale) : 1
+      écrire absente (locale) : 0
+      écrire absente (globale) : 0
+      écrire g comme locale : 0
+      x=99 g=vert
+   hors pause, une locale : 0
