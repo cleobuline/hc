@@ -5515,11 +5515,17 @@ static char kHcvMenuGestionnaires;
  *   Step       la ligne suivante du même gestionnaire          (Cmd-S)
  *   Step Into  la ligne suivante, même dans un gestionnaire appelé (Cmd-I)
  *   Go         jusqu'au prochain point d'arrêt                 (Cmd-G)
- *   Abort      arrêter le script                               (Cmd-.)
+ *   Trace      avancer SEUL, ligne à ligne, dans le même gestionnaire
+ *   Trace Into avancer seul, même dans un gestionnaire appelé      (Cmd-T)
+ *   Abort      arrêter le script                               (Cmd-A)
+ *
+ * Trace attend traceDelay ticks entre deux lignes ; la flèche avance et le
+ * panneau suit (cocoa_debug_trace), boutons grisés ; un point rouge
+ * l'arrête, Cmd-. l'interrompt.
  *
  * et, dessous, les variables : les locales du gestionnaire, puis les
- * globales (hc_debug_variables) — le Variable Watcher d'HyperCard, en lecture
- * seule pour commencer.
+ * globales (hc_debug_variables) — le Variable Watcher d'HyperCard, qu'on
+ * peut modifier pendant la pause (voir HCDebogueur, plus bas).
  *
  * Le panneau est MODAL : pendant la pause, le reste de HC ne répond pas, et
  * le script attend, suspendu dans la pile d'appels. C'est le plus sûr pour
@@ -5540,30 +5546,54 @@ static char kHcvMenuGestionnaires;
  *
  * Écrit sans pouvoir lancer AppKit ici : compilé par le job macOS de
  * l'intégration, pas exécuté. */
-@interface HCDebogueur : NSObject
+/* LE VARIABLE WATCHER, MODIFIABLE.
+ *
+ * MESURÉ DANS HYPERCARD (Basilisk II), sur la capture de l'utilisatrice du
+ * 26 novembre : en tête le nom du gestionnaire (« mouseUp »), une liste à
+ * deux colonnes — le nom, la valeur —, et dessous une zone pour la valeur
+ * de la variable choisie. HC reprend cette forme : la liste (Name, Value),
+ * et dessous la valeur ENTIÈRE de la ligne choisie, que l'on modifie
+ * pendant la pause ; chaque frappe l'écrit (hc_debug_variable_pose), et
+ * Step ou Go repartent avec elle.
+ *
+ * Après une erreur (le bouton « Debug »), les variables sont figées, le
+ * script est fini : la zone se lit, elle ne s'écrit pas.
+ *
+ * NON MESURÉ : comment HyperCard valide une modification (Retour, Entrée,
+ * un clic ailleurs) ; ici, chaque frappe compte. Comment il distingue les
+ * globales ; ici, « global » devant le nom. */
+@interface HCDebogueur : NSObject <NSTableViewDataSource, NSTableViewDelegate,
+                                   NSTextViewDelegate>
 @property (nonatomic, strong) NSPanel *panneau;
 @property (nonatomic, strong) NSTextField *ou;
-@property (nonatomic, strong) NSTextView *vars;
-@property (nonatomic, strong) NSArray<NSButton *> *avancer;   /* Step, Step Into, Go */
+@property (nonatomic, strong) NSTableView *table;
+@property (nonatomic, strong) NSTextView *valeur;
+@property (nonatomic, strong) NSMutableArray<NSMutableDictionary *> *lignes;
+@property (nonatomic) BOOL fige;                               /* après une erreur */
+@property (nonatomic, strong) NSArray<NSButton *> *avancer;   /* Step … Go */
+@property (nonatomic, strong) NSButton *abandon;
+@property (nonatomic, strong) NSTextField *delai;              /* Trace Delay */
 @end
 
 static HCDebogueur *gDebogueur;
 
 static void hcv_debug_une_var(void *u, const char *nom, const char *val, int globale)
 {
-    NSMutableString *t = (__bridge NSMutableString *)u;
-    (void)globale;
-    [t appendFormat:@"  %@ = %@\n", hcv_texte(nom), hcv_texte(val)];
+    NSMutableArray *t = (__bridge NSMutableArray *)u;
+    [t addObject:[@{ @"nom": hcv_texte(nom), @"val": hcv_texte(val),
+                     @"globale": @(globale) } mutableCopy]];
 }
 
 @implementation HCDebogueur
 
 - (NSButton *)bouton:(NSString *)titre touche:(NSString *)k geste:(int)g x:(CGFloat)x {
-    NSButton *b = [[NSButton alloc] initWithFrame:NSMakeRect(x, 10, 96, 30)];
+    NSButton *b = [[NSButton alloc] initWithFrame:NSMakeRect(x, 10, 82, 30)];
     [b setTitle:titre];
     [b setBezelStyle:NSBezelStyleRounded];
-    [b setKeyEquivalent:k];
-    [b setKeyEquivalentModifierMask:NSEventModifierFlagCommand];
+    if ([k length]) {
+        [b setKeyEquivalent:k];
+        [b setKeyEquivalentModifierMask:NSEventModifierFlagCommand];
+    }
     [b setTag:g];
     [b setTarget:self];
     [b setAction:@selector(geste:)];
@@ -5574,37 +5604,148 @@ static void hcv_debug_une_var(void *u, const char *nom, const char *val, int glo
 
 - (void)construis {
     if (self.panneau) return;
+    self.lignes = [NSMutableArray array];
     self.panneau = [[NSPanel alloc]
-        initWithContentRect:NSMakeRect(320, 120, 420, 300)
+        initWithContentRect:NSMakeRect(320, 120, 520, 360)
                   styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskResizable)
                     backing:NSBackingStoreBuffered
                       defer:NO];
     [self.panneau setTitle:@"Debugger"];
     [self.panneau setReleasedWhenClosed:NO];
+    NSView *v = [self.panneau contentView];
 
     self.ou = [NSTextField labelWithString:@""];
-    [self.ou setFrame:NSMakeRect(10, 268, 400, 20)];
+    [self.ou setFrame:NSMakeRect(10, 330, 330, 20)];
     [self.ou setAutoresizingMask:NSViewWidthSizable | NSViewMinYMargin];
-    [[self.panneau contentView] addSubview:self.ou];
+    [v addSubview:self.ou];
 
-    NSScrollView *sc = [[NSScrollView alloc] initWithFrame:NSMakeRect(10, 50, 400, 212)];
-    [sc setHasVerticalScroller:YES];
-    [sc setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
-    self.vars = [[NSTextView alloc] initWithFrame:[[sc contentView] bounds]];
-    [self.vars setEditable:NO];
-    [self.vars setFont:[NSFont fontWithName:@"Monaco" size:11]];
-    [self.vars setAutoresizingMask:NSViewWidthSizable];
-    [sc setDocumentView:self.vars];
-    [[self.panneau contentView] addSubview:sc];
+    /* « Trace Delay », en ticks : le « Trace Delay… » du menu Debugger
+     * d'HyperCard, ici une case du panneau — l'utilisatrice préfère les
+     * boutons au menu. Le texte exact du dialogue d'HyperCard : non mesuré. */
+    NSTextField *td = [NSTextField labelWithString:@"Trace Delay:"];
+    [td setFrame:NSMakeRect(346, 330, 90, 20)];
+    [td setAlignment:NSTextAlignmentRight];
+    [td setAutoresizingMask:NSViewMinXMargin | NSViewMinYMargin];
+    [v addSubview:td];
+    self.delai = [[NSTextField alloc] initWithFrame:NSMakeRect(440, 328, 70, 22)];
+    [self.delai setTarget:self];
+    [self.delai setAction:@selector(delaiChange:)];
+    [self.delai setAutoresizingMask:NSViewMinXMargin | NSViewMinYMargin];
+    [v addSubview:self.delai];
 
+    /* La liste : Name, Value. */
+    NSScrollView *sl = [[NSScrollView alloc] initWithFrame:NSMakeRect(10, 140, 500, 184)];
+    [sl setHasVerticalScroller:YES];
+    [sl setBorderType:NSBezelBorder];
+    [sl setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
+    self.table = [[NSTableView alloc] initWithFrame:[[sl contentView] bounds]];
+    NSTableColumn *cn = [[NSTableColumn alloc] initWithIdentifier:@"nom"];
+    [[cn headerCell] setStringValue:@"Name"];
+    [cn setWidth:130];
+    [cn setEditable:NO];
+    NSTableColumn *cv = [[NSTableColumn alloc] initWithIdentifier:@"val"];
+    [[cv headerCell] setStringValue:@"Value"];
+    [cv setWidth:350];
+    [cv setEditable:NO];
+    [cv setResizingMask:NSTableColumnAutoresizingMask];
+    [self.table addTableColumn:cn];
+    [self.table addTableColumn:cv];
+    [self.table setColumnAutoresizingStyle:NSTableViewLastColumnOnlyAutoresizingStyle];
+    [self.table setDataSource:self];
+    [self.table setDelegate:self];
+    [self.table setFont:[NSFont fontWithName:@"Monaco" size:11]];
+    [sl setDocumentView:self.table];
+    [v addSubview:sl];
+
+    /* Dessous, la valeur entière de la variable choisie. */
+    NSScrollView *se = [[NSScrollView alloc] initWithFrame:NSMakeRect(10, 50, 500, 84)];
+    [se setHasVerticalScroller:YES];
+    [se setBorderType:NSBezelBorder];
+    [se setAutoresizingMask:NSViewWidthSizable | NSViewMaxYMargin];
+    self.valeur = [[NSTextView alloc] initWithFrame:[[se contentView] bounds]];
+    [self.valeur setFont:[NSFont fontWithName:@"Monaco" size:11]];
+    [self.valeur setAutoresizingMask:NSViewWidthSizable];
+    [self.valeur setRichText:NO];
+    [self.valeur setAutomaticQuoteSubstitutionEnabled:NO];
+    [self.valeur setAutomaticDashSubstitutionEnabled:NO];
+    [self.valeur setAutomaticTextReplacementEnabled:NO];
+    [self.valeur setDelegate:self];
+    [se setDocumentView:self.valeur];
+    [v addSubview:se];
+
+    /* Les mots et les touches du menu Debugger d'HyperCard, relevés sur la
+     * capture du 26 novembre ; Trace n'y a pas de touche. */
     self.avancer = @[
-        [self bouton:@"Step"      touche:@"s" geste:HC_DEBUG_PAS        x:10],
-        [self bouton:@"Step Into" touche:@"i" geste:HC_DEBUG_PAS_DEDANS x:110],
-        [self bouton:@"Go"        touche:@"g" geste:HC_DEBUG_CONTINUE   x:210] ];
-    [self bouton:@"Abort"     touche:@"a" geste:HC_DEBUG_ABANDON    x:310];
+        [self bouton:@"Step"       touche:@"s" geste:HC_DEBUG_PAS          x:10],
+        [self bouton:@"Step Into"  touche:@"i" geste:HC_DEBUG_PAS_DEDANS   x:94],
+        [self bouton:@"Trace"      touche:@""  geste:HC_DEBUG_TRACE        x:178],
+        [self bouton:@"Trace Into" touche:@"t" geste:HC_DEBUG_TRACE_DEDANS x:262],
+        [self bouton:@"Go"         touche:@"g" geste:HC_DEBUG_CONTINUE     x:346] ];
+    self.abandon =
+        [self bouton:@"Abort"      touche:@"a" geste:HC_DEBUG_ABANDON      x:430];
+}
+
+- (NSInteger)numberOfRowsInTableView:(NSTableView *)tv {
+    (void)tv;
+    return (NSInteger)[self.lignes count];
+}
+
+- (id)tableView:(NSTableView *)tv objectValueForTableColumn:(NSTableColumn *)col
+            row:(NSInteger)r {
+    (void)tv;
+    if (r < 0 || r >= (NSInteger)[self.lignes count]) return @"";
+    NSDictionary *l = self.lignes[(NSUInteger)r];
+    if ([[col identifier] isEqualToString:@"nom"])
+        return [l[@"globale"] boolValue]
+            ? [@"global " stringByAppendingString:l[@"nom"]] : l[@"nom"];
+    /* Une valeur de plusieurs lignes : la première, et la suite en bas. */
+    NSString *val = l[@"val"];
+    NSRange nl = [val rangeOfCharacterFromSet:[NSCharacterSet newlineCharacterSet]];
+    return nl.location == NSNotFound ? val
+        : [[val substringToIndex:nl.location] stringByAppendingString:@" …"];
+}
+
+- (void)montreValeurChoisie {
+    NSInteger r = [self.table selectedRow];
+    BOOL ok = r >= 0 && r < (NSInteger)[self.lignes count];
+    [self.valeur setString:ok ? self.lignes[(NSUInteger)r][@"val"] : @""];
+    [self.valeur setEditable:ok && !self.fige];
+}
+
+- (void)tableViewSelectionDidChange:(NSNotification *)n {
+    (void)n;
+    [self montreValeurChoisie];
+}
+
+/* Chaque frappe écrit la variable : Step ou Go repartent avec elle. */
+- (void)textDidChange:(NSNotification *)n {
+    (void)n;
+    if (self.fige) return;
+    NSInteger r = [self.table selectedRow];
+    if (r < 0 || r >= (NSInteger)[self.lignes count]) return;
+    NSMutableDictionary *l = self.lignes[(NSUInteger)r];
+    NSString *t = [[self.valeur string] copy];
+    if (hc_debug_variable_pose([l[@"nom"] UTF8String], [l[@"globale"] intValue],
+                               [t UTF8String])) {
+        l[@"val"] = t;
+        [self.table reloadDataForRowIndexes:[NSIndexSet indexSetWithIndex:(NSUInteger)r]
+                              columnIndexes:[NSIndexSet indexSetWithIndex:1]];
+    }
+}
+
+/* Une valeur qui n'est pas un entier ne change rien : la case reprend la
+ * valeur en vigueur. */
+- (void)delaiChange:(id)sender {
+    (void)sender;
+    long n = 0;
+    if (hcv_entier_strict([[self.delai stringValue] UTF8String], &n))
+        hc_trace_delai_pose(n > 32767 ? 32767 : (n < 0 ? 0 : (int)n));
+    [self.delai setIntValue:hc_trace_delai()];
 }
 
 - (void)geste:(id)sender {
+    /* La case lue avant de repartir : une valeur tapée sans Retour compte. */
+    [self delaiChange:nil];
     [NSApp stopModalWithCode:[sender tag]];
 }
 
@@ -5612,18 +5753,54 @@ static void hcv_debug_une_var(void *u, const char *nom, const char *val, int glo
     return [self attendSur:o message:message ligne:ligne erreur:NO];
 }
 
-- (int)attendSur:(Object *)o message:(const char *)message ligne:(int)ligne
-          erreur:(BOOL)erreur {
+/* Pendant une TRACE : le panneau suit, sans attendre de geste. Les
+ * boutons sont grisés — le script tourne ; Cmd-. l'interrompt. */
+- (void)suisLaTrace:(Object *)o message:(const char *)message ligne:(int)ligne {
     [self construis];
-    for (NSButton *b in self.avancer) [b setEnabled:!erreur];
+    for (NSButton *b in self.avancer) [b setEnabled:NO];
+    [self.abandon setEnabled:NO];
+    [self.delai setEnabled:NO];
+    self.fige = YES;
+    [self remplisPour:o message:message ligne:ligne erreur:NO];
+    if (![self.panneau isVisible]) [self.panneau orderFront:nil];
+    [self.panneau display];
+}
 
-    NSMutableString *t = [NSMutableString string];
-    [t appendString:@"Variables:\n"];
+- (void)finDeTrace {
+    if (!self.panneau) return;
+    [self.panneau orderOut:nil];
+    [self.abandon setEnabled:YES];
+}
+
+- (void)remplisPour:(Object *)o message:(const char *)message ligne:(int)ligne
+             erreur:(BOOL)erreur {
+    /* La variable choisie reste choisie d'un pas à l'autre, si elle existe
+     * encore : on suit une valeur en avançant. */
+    NSString *choisie = nil;
+    NSInteger r0 = [self.table selectedRow];
+    if (r0 >= 0 && r0 < (NSInteger)[self.lignes count])
+        choisie = self.lignes[(NSUInteger)r0][@"nom"];
+
+    NSMutableArray *t = [NSMutableArray array];
     if (erreur)
         message = hc_debug_erreur_variables(hcv_debug_une_var, (__bridge void *)t);
     else
         hc_debug_variables(hcv_debug_une_var, (__bridge void *)t);
-    [self.vars setString:t];
+    self.lignes = t;
+    [self.table reloadData];
+    NSInteger sel = [t count] ? 0 : -1;
+    if (choisie)
+        for (NSUInteger i = 0; i < [t count]; i++)
+            if ([t[i][@"nom"] caseInsensitiveCompare:choisie] == NSOrderedSame) {
+                sel = (NSInteger)i;
+                break;
+            }
+    if (sel >= 0)
+        [self.table selectRowIndexes:[NSIndexSet indexSetWithIndex:(NSUInteger)sel]
+                byExtendingSelection:NO];
+    else
+        [self.table deselectAll:nil];
+    [self montreValeurChoisie];
 
     char d[1100];
     hc_describe(o, d, sizeof d);
@@ -5631,6 +5808,17 @@ static void hcv_debug_une_var(void *u, const char *nom, const char *val, int glo
         ? [NSString stringWithFormat:@" — %@", hcv_texte(message)] : @"";
     [self.ou setStringValue:[NSString stringWithFormat:@"%@%@, line %d%@",
                              hcv_texte(d), gest, ligne, erreur ? @" (error)" : @""]];
+}
+
+- (int)attendSur:(Object *)o message:(const char *)message ligne:(int)ligne
+          erreur:(BOOL)erreur {
+    [self construis];
+    for (NSButton *b in self.avancer) [b setEnabled:!erreur];
+    [self.abandon setEnabled:YES];
+    [self.delai setIntValue:hc_trace_delai()];
+    [self.delai setEnabled:YES];
+    self.fige = erreur;
+    [self remplisPour:o message:message ligne:ligne erreur:erreur];
 
     /* À droite de la fenêtre du script, pour ne pas cacher la ligne. */
     for (HCEditionScript *x in gEditions)
@@ -5647,14 +5835,15 @@ static void hcv_debug_une_var(void *u, const char *nom, const char *val, int glo
     [self.panneau makeKeyAndOrderFront:nil];
     NSModalResponse r = [NSApp runModalForWindow:self.panneau];
     [self.panneau orderOut:nil];
-    if (r < HC_DEBUG_CONTINUE || r > HC_DEBUG_ABANDON) return HC_DEBUG_ABANDON;
+    if (r < HC_DEBUG_CONTINUE || r > HC_DEBUG_TRACE_DEDANS) return HC_DEBUG_ABANDON;
     return (int)r;
 }
 
 @end
 
-static int hcv_debogueur_montre(Object *o, const char *message, int ligne,
-                                BOOL erreur)
+/* Le script de l'objet, ouvert, la ligne fléchée en vert et visible : pour
+ * une pause, une erreur, et chaque ligne d'une trace. */
+static HCEditionScript *hcv_debug_montre_ligne(Object *o, int ligne, BOOL erreur)
 {
 
     /* Le script de l'objet, ouvert sur la ligne : la fenêtre déjà ouverte si
@@ -5688,7 +5877,13 @@ static int hcv_debogueur_montre(Object *o, const char *message, int ligne,
      * s'ouvre. La carte aussi, telle que le script l'a laissée. */
     [ed.panneau display];
     [gView display];
+    return ed;
+}
 
+static int hcv_debogueur_montre(Object *o, const char *message, int ligne,
+                                BOOL erreur)
+{
+    HCEditionScript *ed = hcv_debug_montre_ligne(o, ligne, erreur);
     if (!gDebogueur) gDebogueur = [[HCDebogueur alloc] init];
     int geste = [gDebogueur attendSur:o message:message ligne:ligne erreur:erreur];
 
@@ -5703,6 +5898,190 @@ static int cocoa_debug_pause(Object *o, const char *message, int ligne)
 {
     if (!gView || !o) return HC_DEBUG_CONTINUE;
     return hcv_debogueur_montre(o, message, ligne, NO);
+}
+
+/* Une ligne de TRACE : la flèche avance, le panneau suit, sans attendre.
+ * Objet nul : la trace est finie, la flèche s'efface et le panneau se
+ * retire. */
+static void cocoa_debug_trace(Object *o, const char *message, int ligne)
+{
+    if (!gView) return;
+    if (!o) {
+        for (HCEditionScript *x in gEditions)
+            if ([x.vue isKindOfClass:[HCScriptView class]])
+                ((HCScriptView *)x.vue).ligneCourante = 0;
+        [gDebogueur finDeTrace];
+        return;
+    }
+    hcv_debug_montre_ligne(o, ligne, NO);
+    if (!gDebogueur) gDebogueur = [[HCDebogueur alloc] init];
+    [gDebogueur suisLaTrace:o message:message ligne:ligne];
+}
+
+/* ═══ LE MESSAGE WATCHER (la 1.1) ════════════════════════════════════════
+ *
+ * MESURÉ DANS HYPERCARD (Basilisk II), sur une capture de l'utilisatrice le
+ * 26 novembre : une petite fenêtre « Message Watcher », deux cases en tête,
+ * « Hide unused messages » (cochée sur la capture) et « Hide idle » (non
+ * cochée), et dessous la liste des messages, un par ligne — « mouseUp ».
+ *
+ * Le noyau signale chaque message deux fois (message_vu, hc_core.h) : au
+ * départ, où on le range — avant ceux que son gestionnaire enverra —, et au
+ * retour, où l'on apprend si quelqu'un l'a pris. « Hide unused messages »
+ * cache ceux que personne n'a pris ; « Hide idle », le message idle.
+ *
+ * Fenêtre FERMÉE, le rappel rend la main tout de suite : idle part sans
+ * cesse, et rien ne doit coûter quand personne ne regarde.
+ *
+ * NON MESURÉ, et écrit comme tel :
+ *   - le retrait des messages imbriqués (deux espaces par niveau ici) ;
+ *   - si HyperCard montre les appels de fonction (ici, oui) ;
+ *   - si HyperCard montre les commandes intégrées, « put », « go », qu'il
+ *     envoie aussi comme messages (HC ne les envoie pas : absentes) ;
+ *   - l'état des cases à la première ouverture (ici, celui de la capture) ;
+ *   - la place de la commande dans les menus : HyperCard l'a dans son menu
+ *     Debugger, HC dans le menu Tools.
+ *
+ * Compilé par la CI, joué DANS HC (l'application) par l'utilisatrice. */
+@interface HCMessageVu : NSObject
+@property (nonatomic) int ident;
+@property (nonatomic) int prof;
+@property (nonatomic) int pris;                 /* -1 : pas encore revenu */
+@property (nonatomic, strong) NSString *nom;
+@end
+@implementation HCMessageVu
+@end
+
+#define HCV_MW_MAX 500                          /* au-delà, les plus anciens partent */
+
+static NSPanel  *gMWPanel = nil;
+static NSButton *gMWCacheInutiles = nil;
+static NSButton *gMWCacheIdle = nil;
+static NSTextView *gMWTexte = nil;
+static NSMutableArray<HCMessageVu *> *gMWListe = nil;
+static NSTimeInterval gMWDernier = 0;
+static BOOL gMWPrevu = NO;
+
+@interface HCMessageWatcherCible : NSObject
+@end
+static HCMessageWatcherCible *gMWCible = nil;
+
+static void hcv_mw_dessine(void)
+{
+    gMWPrevu = NO;
+    if (!gMWPanel || ![gMWPanel isVisible]) return;
+    BOOL sansInutiles = [gMWCacheInutiles state] == NSControlStateValueOn;
+    BOOL sansIdle     = [gMWCacheIdle state] == NSControlStateValueOn;
+    NSMutableString *t = [NSMutableString string];
+    for (HCMessageVu *m in gMWListe) {
+        if (sansInutiles && m.pris == 0) continue;
+        if (sansIdle && [m.nom caseInsensitiveCompare:@"idle"] == NSOrderedSame)
+            continue;
+        for (int i = 0; i < m.prof && i < 40; i++) [t appendString:@"  "];
+        [t appendString:m.nom];
+        [t appendString:@"\n"];
+    }
+    [gMWTexte setString:t];
+    [gMWTexte scrollRangeToVisible:NSMakeRange([t length], 0)];
+    [gMWTexte display];
+    gMWDernier = [NSDate timeIntervalSinceReferenceDate];
+}
+
+@implementation HCMessageWatcherCible
+- (void)redessine:(id)x { (void)x; hcv_mw_dessine(); }
+- (void)caseChangee:(id)x { (void)x; hcv_mw_dessine(); }
+@end
+
+/* Au plus dix fois par seconde pendant qu'un script tourne ; le reste au
+ * prochain tour de la boucle d'événements, quand le script a fini. */
+static void hcv_mw_plus_tard(void)
+{
+    NSTimeInterval now = [NSDate timeIntervalSinceReferenceDate];
+    if (now - gMWDernier >= 0.1) { hcv_mw_dessine(); return; }
+    if (gMWPrevu) return;
+    gMWPrevu = YES;
+    [gMWCible performSelector:@selector(redessine:) withObject:nil afterDelay:0.1];
+}
+
+static void cocoa_message_vu(int ident, const char *message, Object *cible,
+                             int prof, int pris)
+{
+    (void)cible;
+    if (!gMWPanel || ![gMWPanel isVisible] || !message) return;
+    if (pris < 0) {
+        HCMessageVu *m = [[HCMessageVu alloc] init];
+        m.ident = ident;
+        m.prof = prof;
+        m.pris = -1;
+        m.nom = hcv_texte(message);
+        [gMWListe addObject:m];
+        if ([gMWListe count] > HCV_MW_MAX)
+            [gMWListe removeObjectsInRange:NSMakeRange(0, [gMWListe count] - HCV_MW_MAX)];
+    } else {
+        /* Du plus récent au plus ancien : le retour suit de près le départ. */
+        for (NSInteger i = (NSInteger)[gMWListe count] - 1; i >= 0; i--)
+            if (gMWListe[(NSUInteger)i].ident == ident) {
+                gMWListe[(NSUInteger)i].pris = pris;
+                break;
+            }
+    }
+    hcv_mw_plus_tard();
+}
+
+static void hcv_mw_installe(void)
+{
+    if (gMWPanel) return;
+    gMWListe = [NSMutableArray array];
+    gMWCible = [[HCMessageWatcherCible alloc] init];
+    gMWPanel = [[NSPanel alloc]
+        initWithContentRect:NSMakeRect(40, 140, 280, 220)
+                  styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
+                             NSWindowStyleMaskResizable | NSWindowStyleMaskUtilityWindow)
+                    backing:NSBackingStoreBuffered
+                      defer:NO];
+    [gMWPanel setTitle:@"Message Watcher"];
+    [gMWPanel setReleasedWhenClosed:NO];
+    [gMWPanel setFloatingPanel:YES];
+    [gMWPanel setHidesOnDeactivate:YES];
+    NSView *v = [gMWPanel contentView];
+
+    gMWCacheInutiles = [NSButton checkboxWithTitle:@"Hide unused messages"
+                                            target:gMWCible
+                                            action:@selector(caseChangee:)];
+    [gMWCacheInutiles setFrame:NSMakeRect(6, 196, 172, 20)];
+    [gMWCacheInutiles setState:NSControlStateValueOn];
+    [gMWCacheInutiles setAutoresizingMask:NSViewMinYMargin];
+    [v addSubview:gMWCacheInutiles];
+
+    gMWCacheIdle = [NSButton checkboxWithTitle:@"Hide idle"
+                                        target:gMWCible
+                                        action:@selector(caseChangee:)];
+    [gMWCacheIdle setFrame:NSMakeRect(180, 196, 96, 20)];
+    [gMWCacheIdle setState:NSControlStateValueOff];
+    [gMWCacheIdle setAutoresizingMask:NSViewMinYMargin];
+    [v addSubview:gMWCacheIdle];
+
+    NSScrollView *sc = [[NSScrollView alloc] initWithFrame:NSMakeRect(0, 0, 280, 192)];
+    [sc setHasVerticalScroller:YES];
+    [sc setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
+    gMWTexte = [[NSTextView alloc] initWithFrame:[[sc contentView] bounds]];
+    [gMWTexte setEditable:NO];
+    [gMWTexte setFont:[NSFont fontWithName:@"Monaco" size:10]];
+    [gMWTexte setAutoresizingMask:NSViewWidthSizable];
+    [sc setDocumentView:gMWTexte];
+    [v addSubview:sc];
+}
+
+/* Montrer ou cacher : le menu Tools, et « show window "Message Watcher" ». */
+static void hcv_mw_montre(BOOL oui)
+{
+    if (oui) {
+        hcv_mw_installe();
+        [gMWPanel orderFront:nil];
+        hcv_mw_dessine();
+    } else if (gMWPanel) {
+        [gMWPanel orderOut:nil];
+    }
 }
 
 /* ═══ LA PALETTE NAVIGATOR ════════════════════════════════════════════════
@@ -6093,6 +6472,20 @@ static int cocoa_fenetre(const char *nom, const char *quoi, const char *prop,
 {
     if (nom && quoi && hcv_palette_hc_nom(nom))
         return hcv_palette_fenetre(nom, quoi, prop, valeur, out, outlen);
+    /* « show window "Message Watcher" », « hide window … ». NON MESURÉ : si
+     * HyperCard l'acceptait ainsi, et ses autres propriétés. */
+    if (nom && quoi && strcasecmp(nom, "Message Watcher") == 0) {
+        if (!strcmp(quoi, "existe")) return 1;
+        if (!strcmp(quoi, "montre")) { hcv_mw_montre(YES); return 1; }
+        if (!strcmp(quoi, "cache"))  { hcv_mw_montre(NO);  return 1; }
+        if (!strcmp(quoi, "lit") && prop && !strcasecmp(prop, "visible")) {
+            if (out && outlen > 0)
+                snprintf(out, (size_t)outlen, "%s",
+                         (gMWPanel && [gMWPanel isVisible]) ? "true" : "false");
+            return 1;
+        }
+        return -1;
+    }
     if (!nom || !quoi || strcasecmp(nom, "Navigator") != 0) return 0;
     if (!strcmp(quoi, "palette")) {
         nav_ouvre(valeur);
@@ -10722,6 +11115,8 @@ static void hcv_survol(HCView *v, Object *carte)
     host.click_at      = cocoa_click_at;
     host.click_twice_at = cocoa_click_twice_at;
     host.debug_pause   = cocoa_debug_pause;
+    host.message_vu    = cocoa_message_vu;
+    host.debug_trace   = cocoa_debug_trace;
     host.type_text     = cocoa_type_text;
     host.visual_effect = cocoa_visual_effect;
     host.idle          = cocoa_idle;
@@ -10916,6 +11311,7 @@ static NSTextField  *gSprayDensityLabel = nil;
         case 3: if (!gWidthPanel)   { [self installWidthPalette];   return; } p = gWidthPanel;   break;
         case 4: if (!gBrushPanel)   { [self installBrushPalette];   return; } p = gBrushPanel;   break;
         case 5: if (!gMsgPanel)     { [self installMessageBox];     return; } p = gMsgPanel;     break;
+        case 6: hcv_mw_montre(!(gMWPanel && [gMWPanel isVisible])); return;
         default: return;
     }
     if ([p isVisible]) [p orderOut:nil];
@@ -10937,6 +11333,7 @@ static NSTextField  *gSprayDensityLabel = nil;
         case 3: return gWidthPanel   && [gWidthPanel isVisible];
         case 4: return gBrushPanel   && [gBrushPanel isVisible];
         case 5: return gMsgPanel     && [gMsgPanel isVisible];
+        case 6: return gMWPanel      && [gMWPanel isVisible];
     }
     return NO;
 }

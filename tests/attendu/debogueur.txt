@@ -63,3 +63,45 @@
          globale c = [3]
          globale g = [5]
    gestionnaire figé : [bas]
+
+== 9. écrire une variable pendant la pause ==
+      [ARRÊT] button "B".mouseUp ligne 5 -> continuer
+      écrire x = 99 (locale) : 1
+      écrire g = vert (globale) : 1
+      écrire absente (locale) : 0
+      écrire absente (globale) : 0
+      écrire g comme locale : 0
+      x=99 g=vert
+   hors pause, une locale : 0
+
+== 10. Trace, Trace Into ==
+   traceDelay par défaut : 30 (mesuré dans HyperCard : 30)
+   posé à 0 : 0 ; à -5 : 0 ; à 99999 : 32767
+   -- Trace depuis la ligne 2 : 3, 4, 5, sans entrer
+      [ARRÊT] button "B".mouseUp ligne 2 -> trace
+      [TRACE] button "B".mouseUp ligne 3
+      [TRACE] button "B".mouseUp ligne 4
+      [TRACE] button "B".mouseUp ligne 5
+      fini, x=3
+      [TRACE] fin
+   -- Trace Into : 3, 8, 4, 5
+      [ARRÊT] button "B".mouseUp ligne 2 -> trace dedans
+      [TRACE] button "B".mouseUp ligne 3
+      [TRACE] button "B".sousProgramme ligne 8
+      [TRACE] button "B".mouseUp ligne 4
+      [TRACE] button "B".mouseUp ligne 5
+      fini, x=3
+      [TRACE] fin
+   -- un point en ligne 4 arrête la trace, Go repart libre
+      [ARRÊT] button "B".mouseUp ligne 2 -> trace
+      [TRACE] button "B".mouseUp ligne 3
+      [ARRÊT] button "B".mouseUp ligne 4 -> continuer
+      fini, x=3
+   -- traceDelay 2 : la trace l'attend, et finit pareil
+      2
+      [ARRÊT] button "B".mouseUp ligne 2 -> trace
+      [TRACE] button "B".mouseUp ligne 3
+      [TRACE] button "B".mouseUp ligne 4
+      [TRACE] button "B".mouseUp ligne 5
+      fini, x=3
+      [TRACE] fin

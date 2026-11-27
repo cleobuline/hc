@@ -596,7 +596,7 @@ typedef struct { Object *o; int ligne; } PointArret;
 static PointArret *g_points = NULL;
 static int g_npoints = 0, g_cappoints = 0;
 
-enum { DBG_LIBRE, DBG_PAS, DBG_PAS_DEDANS };
+enum { DBG_LIBRE, DBG_PAS, DBG_PAS_DEDANS, DBG_TRACE, DBG_TRACE_DEDANS };
 static int g_dbg_mode = DBG_LIBRE;
 static int g_dbg_prof = 0;
 
@@ -663,6 +663,13 @@ static void debug_arret(Object *o, const char *message, int ligne)
     case HC_DEBUG_PAS_DEDANS:
         g_dbg_mode = DBG_PAS_DEDANS;
         break;
+    case HC_DEBUG_TRACE:
+        g_dbg_mode = DBG_TRACE;
+        g_dbg_prof = g_depth;
+        break;
+    case HC_DEBUG_TRACE_DEDANS:
+        g_dbg_mode = DBG_TRACE_DEDANS;
+        break;
     case HC_DEBUG_ABANDON:
         /* Le chemin de Cmd-., sans dialogue. Il passe outre cantAbort : c'est
          * l'utilisatrice qui le demande, depuis le débogueur, pas une touche
@@ -676,6 +683,28 @@ static void debug_arret(Object *o, const char *message, int ligne)
     }
 }
 
+/* TRACE : LE SCRIPT AVANCE SEUL, ET L'ON REGARDE.
+ *
+ * Mesuré DANS HYPERCARD (Basilisk II), sur la capture de l'utilisatrice du
+ * 26 novembre : le menu Debugger porte « Trace » (sans touche) et « Trace
+ * Into » (⌘T), à côté de Step et Step Into, et « Trace Delay… ». Trace est
+ * à Step ce que Trace Into est à Step Into : la même règle pour savoir quelle
+ * ligne se montre, mais sans s'arrêter — l'hôte la montre (debug_trace), on
+ * attend traceDelay ticks, et l'on continue.
+ *
+ * Un point d'arrêt rencontré en chemin ARRÊTE la trace : c'est une pause,
+ * et le geste qui suit décide. Cmd-. l'interrompt, pendant l'attente aussi
+ * (attends). Au repos, l'hôte est prévenu que c'est fini (debug_trace avec
+ * un objet nul), pour effacer sa flèche.
+ *
+ * traceDelay vaut 30 par défaut, mesuré dans HyperCard (voir G_REGLAGES) ;
+ * à 0, sans pause, mais l'hôte respire à chaque ligne. NON MESURÉ : l'unité exacte
+ * qu'applique HyperCard (ici le tick, un soixantième de seconde, comme
+ * « wait »), et si sa trace remonte dans l'appelant à la fin du
+ * gestionnaire tracé (ici oui, comme Step). */
+static void attends(double secondes);
+static int trace_delai(void);
+
 static void v3_avant_ligne(void *d, const HctNoeud *n)
 {
     (void)d;
@@ -684,7 +713,14 @@ static void v3_avant_ligne(void *d, const HctNoeud *n)
     int arret = g_dbg_mode == DBG_PAS_DEDANS
              || (g_dbg_mode == DBG_PAS && g_depth <= g_dbg_prof)
              || (g_npoints && hc_debug_point(g_exec_objet, ligne));
-    if (arret) debug_arret(g_exec_objet, g_exec_message, ligne);
+    if (arret) { debug_arret(g_exec_objet, g_exec_message, ligne); return; }
+    int trace = g_dbg_mode == DBG_TRACE_DEDANS
+             || (g_dbg_mode == DBG_TRACE && g_depth <= g_dbg_prof);
+    if (trace && g_host && g_host->debug_trace) {
+        g_host->debug_trace(g_exec_objet, g_exec_message ? g_exec_message : "",
+                            ligne);
+        attends(trace_delai() / 60.0);
+    }
 }
 
 /* Au repos : plus rien ne tourne, la demande est servie. */
@@ -693,6 +729,10 @@ static void interruption_servie(void)
     if (g_depth == 0 && g_msg_box == 0) {
         g_interrompu = 0;
         g_abandon = 0;
+        /* La trace finie, l'hôte efface sa flèche. */
+        if ((g_dbg_mode == DBG_TRACE || g_dbg_mode == DBG_TRACE_DEDANS) &&
+            g_host && g_host->debug_trace)
+            g_host->debug_trace(NULL, NULL, 0);
         g_dbg_mode = DBG_LIBRE;         /* le pas à pas meurt avec le script */
     }
 }
@@ -4742,6 +4782,32 @@ const char *hc_debug_erreur_variables(void (*cb)(void *u, const char *nom,
     return g_fige_message;
 }
 
+static int frame_has_global(Frame *f, const char *name);
+/* ÉCRIRE UNE VARIABLE PENDANT LA PAUSE : le Variable Watcher modifiable.
+ *
+ * Une locale ne s'écrit que si elle existe déjà dans le gestionnaire arrêté
+ * — on corrige une valeur, on n'invente pas de variable —, et pas si elle
+ * y est déclarée globale : elle vit alors dans les globales, où on l'écrit.
+ * Une globale s'écrit dans les globales, déclarée ici ou non. Rend 1 si
+ * c'est écrit. Appelé par l'hôte pendant debug_pause, et seulement là. */
+static void var_set(const char *name, const char *val);
+int hc_debug_variable_pose(const char *nom, int globale, const char *valeur)
+{
+    if (!nom || !*nom) return 0;
+    Frame *f = globale ? &g_globals : g_frame;
+    if (!f) return 0;
+    int trouve = 0;
+    for (int i = 0; i < f->n && !trouve; i++)
+        if (ci_equal(f->v[i].name, nom)) trouve = 1;
+    if (!trouve) return 0;
+    if (!globale && frame_has_global(g_frame, nom)) return 0;
+    Frame *sauve = g_frame;
+    if (globale) g_frame = NULL;        /* frame_for rend alors les globales */
+    var_set(nom, valeur ? valeur : "");
+    g_frame = sauve;
+    return 1;
+}
+
 static int frame_has_global(Frame *f, const char *name)
 {
     if (!f) return 0;
@@ -7545,15 +7611,21 @@ static struct {
      * « set the printTextFont to "Times" » — ou que HyperCard Help prépare —
      * « set the userModify to true » — s'arrêtait là. Ils sont RETENUS et
      * RELUS, comme les six du haut, et ne sont PAS CONSULTÉS : HC n'imprime
-     * pas de rapport, n'a qu'un éditeur de script, pas de Message Watcher ni
-     * de Variable Watcher, et pas de modem.
+     * pas de rapport, n'a qu'un éditeur de script et pas de modem ; son
+     * Message Watcher et son Variable Watcher (la 1.1) ne se remplacent pas
+     * par un autre nom. SAUF traceDelay, que Trace consulte depuis la 1.1
+     * (trace_delai).
      *
      * Les défauts sont ceux qu'écrit la référence d'Apple, carte par carte.
      * NON MESURÉ : dialingVolume, dont la référence ne donne pas le défaut —
      * 7, le plus fort, est un choix. */
     { "usermodify",       "userModify",       REG_BOOL,   0, 0, 1, "" },
     { "longwindowtitles", "longWindowTitles", REG_BOOL,   0, 0, 1, "" },
-    { "tracedelay",       "traceDelay",       REG_ENTIER, 0, 0, 32767, "" },
+    /* 30 et non 0 : MESURÉ DANS HYPERCARD (Basilisk II) par l'utilisatrice
+     * le 27 novembre, dans « Trace Delay… » du menu Debugger. La référence
+     * d'Apple, suivie jusque-là, disait 0 — et à 0, Trace file trop vite
+     * pour se voir. */
+    { "tracedelay",       "traceDelay",       REG_ENTIER, 30, 0, 32767, "" },
     { "dialingvolume",    "dialingVolume",    REG_ENTIER, 7, 0, 7, "" },
     { "printtextheight",  "printTextHeight",  REG_ENTIER, 13, 1, 32767, "" },
     { "printtextsize",    "printTextSize",    REG_ENTIER, 10, 1, 32767, "" },
@@ -7569,6 +7641,29 @@ static struct {
     { "variablewatcher",  "variableWatcher",  REG_TEXTE, 0, 0, 0, "VariableWatcher" },
 };
 #define HC_NREGLAGES ((int)(sizeof G_REGLAGES / sizeof *G_REGLAGES))
+
+static int reglage_index(const char *nom);
+
+/* traceDelay, en ticks : le seul des réglages du haut que le débogueur
+ * CONSULTE. Voir v3_avant_ligne. */
+static int trace_delai(void)
+{
+    int i = reglage_index("tracedelay");
+    return i >= 0 ? G_REGLAGES[i].valeur : 0;
+}
+
+/* Pour la case « Trace Delay » du panneau du débogueur : lire et poser sans
+ * passer par un script, ce qui pendant une pause en ouvrirait un second. */
+int hc_trace_delai(void) { return trace_delai(); }
+
+void hc_trace_delai_pose(int ticks)
+{
+    int i = reglage_index("tracedelay");
+    if (i < 0) return;
+    if (ticks < G_REGLAGES[i].mini) ticks = G_REGLAGES[i].mini;
+    if (ticks > G_REGLAGES[i].maxi) ticks = G_REGLAGES[i].maxi;
+    G_REGLAGES[i].valeur = ticks;
+}
 
 static int reglage_index(const char *nom)
 {
@@ -19325,10 +19420,26 @@ static int hc_send_args_k(Object *target, const char *message,
                           char argv[][HC_VAL], int argc, int isfunc,
                           int cible_neuve)
 {
+    /* LE MESSAGE WATCHER regarde partir et revenir chaque message. Mesuré
+     * DANS HYPERCARD (Basilisk II) sur une capture de l'utilisatrice le 26
+     * novembre : la fenêtre « Message Watcher », ses cases « Hide unused
+     * messages » et « Hide idle », et « mouseUp » dans la liste. Le départ et
+     * le retour sont deux appels, pour que l'hôte range le message à sa
+     * place — avant ceux qu'il envoie à son tour — et sache pourtant, au
+     * retour, si quelqu'un l'a pris. */
+    static int g_message_id = 0;
+    int id = ++g_message_id;
+    int prof = g_depth;
+    if (g_host && g_host->message_vu && message)
+        g_host->message_vu(id, message, target, prof, -1);
+
     ARENA_MARK;
     int r = hc_send_args_k_body(target, message, argv, argc, isfunc, cible_neuve);
     ARENA_FREE;
     interruption_servie();
+
+    if (g_host && g_host->message_vu && message)
+        g_host->message_vu(id, message, target, prof, r ? 1 : 0);
 
     /* DÉVERROUILLAGE AUTOMATIQUE en retombant au repos.
      *

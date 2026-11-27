@@ -2,7 +2,7 @@
 == 1. les défauts de la référence ==
       = userModify false
       = longWindowTitles false
-      = traceDelay 0
+      = traceDelay 30
       = dialingVolume 7
       = printTextHeight 13
       = printTextSize 10

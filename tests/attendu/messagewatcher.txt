@@ -1,0 +1,23 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1-2. mouseUp, et ce qu'il envoie, à leur place ==
+   départ #1 mouseUp -> button "B"
+     départ #2 ajoute -> button "B"
+     retour, pris #2 ajoute
+     départ #3 double -> button "B"
+     retour, pris #3 double
+     départ #4 bonjour -> card "C"
+      bonjour
+     retour, pris #4 bonjour
+   retour, pris #1 mouseUp
+
+== 3. un message que personne ne prend ==
+   départ #5 idle -> button "B"
+   retour, NON pris #5 idle
+
+== 4. un pass jusqu'au bout ==
+   départ #6 mouseDown -> button "B"
+   retour, NON pris #6 mouseDown
+
+== 5. sans rappel, rien ==
+      bonjour
+   (aucune ligne au-dessus)
