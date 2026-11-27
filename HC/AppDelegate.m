@@ -597,6 +597,23 @@ static NSMenu *gRecentMenu = nil;
         [dm setTarget:self];
     }
 
+    /* « LEAVE A COMMENT… », sous « About HC » dans le menu de l'application.
+     * Voulu par l'utilisatrice le 24 novembre, pour la 1.1 : une page de
+     * commentaires sur son site. Le menu de l'application vient du nib ; on
+     * y cherche l'article d'À propos par son action, et l'on se pose dessous.
+     * Introuvable — un nib inattendu —, rien : le lien reste dans À propos. */
+    {
+        NSMenu *app = [[[NSApp mainMenu] itemAtIndex:0] submenu];
+        NSInteger i = app ? [app indexOfItemWithTarget:nil andAction:@selector(hcAPropos:)] : -1;
+        if (i >= 0) {
+            NSMenuItem *cm = [[NSMenuItem alloc] initWithTitle:@"Leave a Comment…"
+                                                        action:@selector(laisseCommentaire:)
+                                                 keyEquivalent:@""];
+            [cm setTarget:self];
+            [app insertItem:cm atIndex:i + 1];
+        }
+    }
+
     /* --- menu « Outils » : afficher ou masquer les palettes ---
      * HyperCard laissait refermer ses palettes et les rappeler d'ici, avec une
      * coche devant celles qui sont à l'écran. Une seule entrée par palette,
@@ -2183,6 +2200,16 @@ static NSString *const HC_URL_DEMOS = @"https://labynet.fr/download/demo.dmg";
  * « Version » à vide : CFBundleVersion vaut encore 1 en dur, et le panneau
  * l'affichait entre parenthèses, « 0.7.8 (1) ». La chaîne vide est censée
  * l'ôter ; non vu à l'écran, à vérifier DANS HC. */
+/* LA PAGE DES COMMENTAIRES, sur le site de l'utilisatrice — donnée par elle
+ * le 24 novembre. Le menu (« Leave a Comment… ») et À propos y mènent. */
+static NSString *const HC_URL_COMMENTAIRES = @"https://hc.labynet.fr/commentaires.php";
+
+- (void)laisseCommentaire:(id)sender
+{
+    (void)sender;
+    [[NSWorkspace sharedWorkspace] openURL:[NSURL URLWithString:HC_URL_COMMENTAIRES]];
+}
+
 - (IBAction)hcAPropos:(id)sender
 {
     (void)sender;
@@ -2203,11 +2230,16 @@ static NSString *const HC_URL_DEMOS = @"https://labynet.fr/download/demo.dmg";
     NSDictionary *lien  = @{ NSFontAttributeName: grasse,
                              NSLinkAttributeName: [NSURL URLWithString:@"https://labynet.fr"],
                              NSParagraphStyleAttributeName: centre };
+    NSDictionary *avis  = @{ NSFontAttributeName: grasse,
+                             NSLinkAttributeName: [NSURL URLWithString:HC_URL_COMMENTAIRES],
+                             NSParagraphStyleAttributeName: centre };
     /* SOUTENIR HC — demandé par l'utilisatrice le 6 octobre. Le bouton de don
      * PayPal qu'elle a créé, par son lien direct : un bouton en JavaScript ne
      * s'affiche que dans une page web. Lien vérifié : il ouvre la page de don
-     * au nom de HC. À RETIRER d'une éventuelle version App Store, où Apple
-     * encadre les liens de paiement. */
+     * au nom de HC. GARDÉ DANS LA VERSION APP STORE, décidé par l'utilisatrice
+     * le 27 novembre : Apple n'a rien dit à la soumission, et s'il refuse un
+     * jour, « on perdra que 3 ou 4 jours et on fera une autre soumission ».
+     * La page des commentaires porte aussi le bouton de don. */
     NSDictionary *don   = @{ NSFontAttributeName: grasse,
                              NSLinkAttributeName: [NSURL URLWithString:
                                  @"https://www.paypal.com/ncp/payment/V7F3MJJ2NRZ6L"],
@@ -2225,6 +2257,11 @@ static NSString *const HC_URL_DEMOS = @"https://labynet.fr/download/demo.dmg";
     ajoute(@"Stacks, news, and a pinball to play \u2014 come and visit\n", texte);
     ajoute(@"Des piles, des nouvelles et un flipper \u2014 venez nous voir\n", doux);
     ajoute(@"labynet.fr", lien);
+    ajoute(@"\n\n", texte);
+
+    ajoute(@"Tell us what you think, what you made, what you miss\n", texte);
+    ajoute(@"Dites-nous ce que vous en pensez, ce que vous avez fait, ce qui manque\n", doux);
+    ajoute(@"Leave a comment \u00B7 Laisser un commentaire", avis);
     ajoute(@"\n\n", texte);
 
     ajoute(@"HC is free. If you like it, you can help it grow\n", texte);
