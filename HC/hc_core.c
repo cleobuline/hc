@@ -693,7 +693,10 @@ static void debug_arret(Object *o, const char *message, int ligne)
  * attend traceDelay ticks, et l'on continue.
  *
  * Un point d'arrêt rencontré en chemin ARRÊTE la trace : c'est une pause,
- * et le geste qui suit décide. Cmd-. l'interrompt, pendant l'attente aussi
+ * et le geste qui suit décide. Le bouton Pause du panneau aussi, sur la
+ * ligne qui vient — demandé par l'utilisatrice le 27 novembre, « il manque
+ * un bouton pause pour trace » ; NON MESURÉ dans HyperCard, où l'on
+ * choisissait sans doute Step dans le menu pendant la trace. Cmd-. l'interrompt, pendant l'attente aussi
  * (attends). Au repos, l'hôte est prévenu que c'est fini (debug_trace avec
  * un objet nul), pour effacer sa flèche.
  *
@@ -717,8 +720,19 @@ static void v3_avant_ligne(void *d, const HctNoeud *n)
     int trace = g_dbg_mode == DBG_TRACE_DEDANS
              || (g_dbg_mode == DBG_TRACE && g_depth <= g_dbg_prof);
     if (trace && g_host && g_host->debug_trace) {
-        g_host->debug_trace(g_exec_objet, g_exec_message ? g_exec_message : "",
-                            ligne);
+        /* La réponse porte le geste fait PENDANT l'attente de la ligne
+         * précédente : Pause s'arrête ici, sur la ligne qui vient. */
+        int r = g_host->debug_trace(g_exec_objet,
+                                    g_exec_message ? g_exec_message : "", ligne);
+        if (r == HC_TRACE_PAUSE) {
+            debug_arret(g_exec_objet, g_exec_message, ligne);
+            return;
+        }
+        if (r == HC_TRACE_ABANDON) {
+            g_dbg_mode = DBG_LIBRE;
+            if (g_depth > 0 || g_msg_box > 0) g_interrompu = 1;
+            return;
+        }
         attends(trace_delai() / 60.0);
     }
 }
