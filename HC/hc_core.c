@@ -708,6 +708,14 @@ static void debug_arret(Object *o, const char *message, int ligne)
 static void attends(double secondes);
 static int trace_delai(void);
 
+/* LA LIGNE SUR LAQUELLE ON VIENT DE S'ARRÊTER, pour que « debug checkpoint »
+ * ne s'y arrête pas une seconde fois. Trouvé à l'audit du 27 novembre : Step
+ * arrivant sur une ligne « debug checkpoint » s'arrêtait AVANT elle (le
+ * crochet), puis la commande s'arrêtait encore SUR elle — deux Step pour la
+ * passer. Le crochet retient le nœud ; la commande qui le porte passe son
+ * tour, et oublie. */
+static const HctNoeud *g_dbg_noeud_arrete = NULL;
+
 static void v3_avant_ligne(void *d, const HctNoeud *n)
 {
     (void)d;
@@ -716,7 +724,12 @@ static void v3_avant_ligne(void *d, const HctNoeud *n)
     int arret = g_dbg_mode == DBG_PAS_DEDANS
              || (g_dbg_mode == DBG_PAS && g_depth <= g_dbg_prof)
              || (g_npoints && hc_debug_point(g_exec_objet, ligne));
-    if (arret) { debug_arret(g_exec_objet, g_exec_message, ligne); return; }
+    g_dbg_noeud_arrete = NULL;
+    if (arret) {
+        g_dbg_noeud_arrete = n;
+        debug_arret(g_exec_objet, g_exec_message, ligne);
+        return;
+    }
     int trace = g_dbg_mode == DBG_TRACE_DEDANS
              || (g_dbg_mode == DBG_TRACE && g_depth <= g_dbg_prof);
     if (trace && g_host && g_host->debug_trace) {
@@ -725,6 +738,7 @@ static void v3_avant_ligne(void *d, const HctNoeud *n)
         int r = g_host->debug_trace(g_exec_objet,
                                     g_exec_message ? g_exec_message : "", ligne);
         if (r == HC_TRACE_PAUSE) {
+            g_dbg_noeud_arrete = n;
             debug_arret(g_exec_objet, g_exec_message, ligne);
             return;
         }
@@ -15070,6 +15084,13 @@ static int v3_cmd_debug(HctContexte *ctx, const HctNoeud *n)
         mot[0] = '\0';
         v3_brut(n->fils[0], mot, sizeof mot);
         if (ci_equal(mot, "checkpoint")) {
+            /* Déjà arrêté sur cette ligne, juste avant elle : on n'y revient
+             * pas. Voir g_dbg_noeud_arrete. */
+            if (g_dbg_noeud_arrete == n) {
+                g_dbg_noeud_arrete = NULL;
+                set_result("");
+                return 1;
+            }
             debug_arret(g_exec_objet, g_exec_message, n->jeton.ligne);
             set_result("");
             return 1;
@@ -19441,8 +19462,11 @@ static int hc_send_args_k(Object *target, const char *message,
      * le retour sont deux appels, pour que l'hôte range le message à sa
      * place — avant ceux qu'il envoie à son tour — et sache pourtant, au
      * retour, si quelqu'un l'a pris. */
-    static int g_message_id = 0;
-    int id = ++g_message_id;
+    /* Sans signe, et ramené dans les int positifs : un compteur signé qui
+     * déborde est un comportement indéfini, et deux milliards de messages
+     * se comptent en quelques heures dans une boucle (audit du 27 nov.). */
+    static unsigned g_message_id = 0;
+    int id = (int)(++g_message_id & 0x7fffffffu);
     int prof = g_depth;
     if (g_host && g_host->message_vu && message)
         g_host->message_vu(id, message, target, prof, -1);
