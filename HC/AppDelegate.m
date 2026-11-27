@@ -1579,6 +1579,9 @@ BOOL hc_enregistre_document(HCDocument *doc)
 
         hc_set_current_card(first);
         [actif.view clearPaintCache];
+        /* Le site jumeau de l'ouverture d'un fichier : voir là-bas. */
+        hcv_pile_peinte_oublie(st);
+        actif.empreinte = hc_empreinte(st);
         [actif.view applyStackSize];
         [actif.view updateWindowTitle];
         [actif.window makeKeyAndOrderFront:nil];
@@ -2069,6 +2072,14 @@ void cocoa_stack_changed(Object *stack) {
         if (first) hc_set_current_card(first);
 
         [actif.view clearPaintCache];
+        /* LA PILE CHANGE DE FENÊTRE : SON EMPREINTE AUSSI. Sans ces deux
+         * lignes, la pile ouverte dans la fenêtre vierge du lancement — Home,
+         * le plus souvent — gardait l'empreinte de la pile « Untitled » qu'elle
+         * remplace, et « Save changes? » se posait à sa fermeture sans qu'on
+         * y ait touché. Rapporté DANS HC (l'application) par l'utilisatrice le
+         * 27 novembre. Le site jumeau est dans installStack:. */
+        hcv_pile_peinte_oublie(loaded);
+        actif.empreinte = hc_empreinte(loaded);
         [actif.view applyStackSize];
         [actif.window setTitle:[path lastPathComponent]];
         [actif.window makeKeyAndOrderFront:nil];
