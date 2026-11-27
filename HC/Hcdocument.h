@@ -42,6 +42,19 @@
  * premier plan, ce qui enverrait suspendStack juste avant closeStack. */
 @property (assign, nonatomic) BOOL          enFermeture;
 
+/* L'EMPREINTE de la pile à l'ouverture, ou au dernier enregistrement
+ * (hc_empreinte, sans le dessin), et la question qu'elle permet : la pile
+ * a-t-elle changé ? Le dessin a sa propre marque, hcv_pile_peinte. Demandé
+ * par l'utilisatrice le 27 novembre : « si la stack a été modifiée, à la
+ * fermeture demander si on sauve ». */
+@property (assign, nonatomic) unsigned long long empreinte;
+- (BOOL)estModifie;
+
+/* Poser la question « Save changes? » si la pile a changé. Rend NO si
+ * l'utilisatrice annule, ou si l'enregistrement a échoué : la fenêtre reste
+ * ouverte, HC ne quitte pas. */
+- (BOOL)demandeSiModifie;
+
 /* Le pendant de dejaVue pour les messages système du cycle de vie. */
 - (void)envoiePile:(const char *)message;
 
@@ -64,6 +77,11 @@
  * exactement l'une sur l'autre et l'on croirait qu'il ne s'en est ouvert
  * qu'une. */
 + (HCDocument *)documentWithStack:(Object *)stack path:(NSString *)path;
+
+/* Enregistrer le document là où il vit, ou, s'il n'a jamais été enregistré,
+ * là où l'utilisatrice le dit. Rend YES si c'est écrit. Défini dans
+ * AppDelegate.m, à côté de « Save a Copy… », dont il partage l'écriture. */
+BOOL hc_enregistre_document(HCDocument *doc);
 
 /* Enregistre le document dans la liste et auprès du noyau. */
 - (void)registerDocument;

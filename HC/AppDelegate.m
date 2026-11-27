@@ -1446,6 +1446,9 @@ static int enregistre_pile(Object *pile, NSString *path)
         }
         doc.path = path;              /* « go to stack » cherchera à côté */
         if (copie) free(ancien_nom);
+        /* Enregistrée : plus rien à demander à la fermeture. */
+        doc.empreinte = hc_empreinte(pile);
+        hcv_pile_peinte_oublie(pile);
         [doc.view updateWindowTitle];
     };
 
@@ -1456,6 +1459,71 @@ static int enregistre_pile(Object *pile, NSString *path)
  * se place sur la première carte. Partagé par l'ouverture d'un fichier et la
  * création d'une pile neuve — les deux font exactement la même chose une fois
  * la pile en main, et deux copies de cette séquence finiraient par diverger. */
+/* ENREGISTRER POUR FERMER : le « Save » de la question « Save changes? ».
+ *
+ * À sa place, sans redemander, si la pile a un fichier ; sinon, comme Save a
+ * Copy…, un panneau, et la pile prend le nom de son fichier. Le panneau est
+ * MODAL et non une feuille : la fermeture attend la réponse pour savoir si
+ * elle peut avoir lieu. Rend YES si c'est écrit. */
+BOOL hc_enregistre_document(HCDocument *doc)
+{
+    Object *pile = doc.stack;
+    if (!pile) return YES;
+    NSString *path = doc.path;
+    BOOL neuf = ([path length] == 0);
+    if (neuf) {
+        NSSavePanel *panel = [NSSavePanel savePanel];
+        const char *nm = pile->name ? pile->name : "Untitled";
+        [panel setNameFieldStringValue:[hcv_texte(nm) stringByAppendingString:@".stack"]];
+        if ([panel runModal] != NSModalResponseOK) return NO;
+        path = [[panel URL] path];
+    }
+    if (![doc.view flushPaintToKernel]) {
+        NSAlert *a = [[NSAlert alloc] init];
+        [a setMessageText:@"The stack could not be saved."];
+        [a setInformativeText:
+            @"A drawing could not be prepared for saving, probably for "
+            @"lack of memory. Nothing was written: the original file is "
+            @"intact. Close other applications, then try again."];
+        [a addButtonWithTitle:@"OK"];
+        [a runModal];
+        return NO;
+    }
+    char *ancien_nom = pile->name, *copie = NULL;
+    if (neuf) {
+        NSString *base = [[path lastPathComponent] stringByDeletingPathExtension];
+        if ([base length]) { copie = strdup([base UTF8String]); if (copie) pile->name = copie; }
+    }
+    if (enregistre_pile(pile, path) != 0) {
+        if (copie) { pile->name = ancien_nom; free(copie); }
+        NSAlert *a = [[NSAlert alloc] init];
+        [a setMessageText:@"The stack could not be saved."];
+        [a setInformativeText:[NSString stringWithFormat:
+            @"The stack could not be written to %@.\n\n"
+            @"The original file is intact. Check the disk space "
+            @"and the write permissions, then try again.",
+            [path lastPathComponent]]];
+        [a addButtonWithTitle:@"OK"];
+        [a runModal];
+        return NO;
+    }
+    if (copie) free(ancien_nom);
+    doc.path = path;
+    doc.empreinte = hc_empreinte(pile);
+    hcv_pile_peinte_oublie(pile);
+    [doc.view updateWindowTitle];
+    return YES;
+}
+
+/* QUITTER : la même question, pile par pile. Cancel, ou un enregistrement
+ * qui échoue, et HC reste ouvert. */
+- (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication *)sender {
+    (void)sender;
+    for (HCDocument *d in [[HCDocument allDocuments] copy])
+        if (![d demandeSiModifie]) return NSTerminateCancel;
+    return NSTerminateNow;
+}
+
 - (void)installStack:(Object *)st {
     if (!st) return;
 

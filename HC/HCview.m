@@ -356,6 +356,7 @@ static void hcv_ligne_brisee_termine(void)
             NSBitmapImageRep *rep =
                 paint_bitmap(layer, (int)[gView bounds].size.width,
                                     (int)[gView bounds].size.height);
+            hcv_peinture_touchee();   /* voir hcv_peinture_touchee */
             /* La fermeture SUIT « filled », et le remplissage vient avant le
              * contour pour que le trait couvre la frange du remplissage —
              * l'ordre qu'emploie déjà le tracé libre, et les formes. */
@@ -1166,6 +1167,43 @@ NSString *hcv_texte(const char *s)
  * menu Style ; le dialogue de style de l'Info lisait son corps et son
  * interligne de la même façon. Ici, des blancs autour, un entier entre eux,
  * et c'est tout. Rend NO pour une chaîne vide, illisible ou hors des long. */
+/* « ON A PEINT SUR CETTE PILE » : la marque que la question « Save
+ * changes? » consulte à la fermeture (voir HCDocument). Demandée par
+ * l'utilisatrice le 27 novembre, après une carte perdue en fermant une pile.
+ *
+ * Le noyau sait dire si une pile a changé, par son empreinte (hc_empreinte),
+ * mais SANS le dessin : celui-ci vit ici, dans des calques, et ne lui revient
+ * qu'à l'enregistrement. Version simple, choisie par elle : tout coup de
+ * pinceau marque la pile de la carte courante, sans vérifier que l'image a
+ * vraiment changé. Au pire, une question de trop ; jamais un dessin perdu.
+ *
+ * Posée là où le dessin s'écrit : beginPaintUndo (le passage des outils et du
+ * menu Paint), Undo, Revert, et chaque paint_bitmap qui écrit hors de lui —
+ * la peinture par script, le texte peint, le tramage, Couper, Coller,
+ * l'aérographe. */
+static NSMutableSet<NSValue *> *gPilesPeintes = nil;
+
+void hcv_peinture_touchee(void)
+{
+    Object *o = hc_current_card();
+    while (o && o->type != OBJ_STACK) o = o->owner;
+    if (!o) return;
+    if (!gPilesPeintes) gPilesPeintes = [NSMutableSet set];
+    [gPilesPeintes addObject:[NSValue valueWithPointer:o]];
+}
+
+BOOL hcv_pile_peinte(Object *pile)
+{
+    return pile && [gPilesPeintes containsObject:[NSValue valueWithPointer:pile]];
+}
+
+/* Enregistrée, ou fermée : la marque s'efface. Fermée surtout, sans quoi une
+ * pile neuve rendue à la même adresse hériterait d'un dessin qu'elle n'a pas. */
+void hcv_pile_peinte_oublie(Object *pile)
+{
+    if (pile) [gPilesPeintes removeObject:[NSValue valueWithPointer:pile]];
+}
+
 BOOL hcv_entier_strict(const char *s, long *out)
 {
     if (!s) return NO;
@@ -2362,6 +2400,7 @@ static void cocoa_drag(int x1, int y1, int x2, int y2, const char *mods) {
     if (!layer) layer = card;
     NSRect b = [gView bounds];
     NSBitmapImageRep *rep = paint_bitmap(layer, (int)b.size.width, (int)b.size.height);
+    hcv_peinture_touchee();   /* voir hcv_peinture_touchee */
     NSPoint a = NSMakePoint(x1, y1), z = NSMakePoint(x2, y2);
     if (mods_has(mods, "shift")) {
         z = constrain_to_axis(a, z);
@@ -2590,6 +2629,7 @@ static void cocoa_click_at(int x, int y, const char *mods) {
         NSBitmapImageRep *rep = paint_bitmap(layer,
                                     (int)[gView bounds].size.width,
                                     (int)[gView bounds].size.height);
+        hcv_peinture_touchee();   /* voir hcv_peinture_touchee */
         flood_fill(rep, (int)p.x, (int)p.y);
         hcv_invalide_tout();           /* le remplissage peut aller partout */
         return;
@@ -2612,6 +2652,7 @@ static void cocoa_click_at(int x, int y, const char *mods) {
         NSBitmapImageRep *rep = paint_bitmap(layer,
                                     (int)[gView bounds].size.width,
                                     (int)[gView bounds].size.height);
+        hcv_peinture_touchee();   /* voir hcv_peinture_touchee */
 
         CGFloat marge;
         switch (gTool) {
@@ -3099,6 +3140,7 @@ static BOOL hcv_efface_peinture_choisie(void)
     if (!layer) layer = card;
     NSBitmapImageRep *rep = paint_bitmap(layer, (int)[gView bounds].size.width,
                                                 (int)[gView bounds].size.height);
+    hcv_peinture_touchee();   /* voir hcv_peinture_touchee */
     if (lasso) {
         erase_freeform(rep, gLassoPts, gLassoCount);
         gLassoActive = NO;
@@ -7659,6 +7701,7 @@ static BOOL hcv_presse_image_systeme(void)
     if (!layer) layer = card;
     NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width,
                                                 (int)[self bounds].size.height);
+    hcv_peinture_touchee();   /* voir hcv_peinture_touchee */
     if (gTool == TOOL_SELRECT && gSelRectActive) {
         copy_rect(rep, gSelStart, gSelEnd);
         hcv_presse_image_retient();
@@ -8106,6 +8149,7 @@ static BOOL hcv_presse_image_systeme(void)
         if (layer) {
             NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width,
                                                         (int)[self bounds].size.height);
+            hcv_peinture_touchee();   /* voir hcv_peinture_touchee */
             stamp_text(rep, gTextBuf, gTextPos);
         }
     }
@@ -8197,6 +8241,7 @@ static int gColorTarget = 0;
     if (!layer) layer = card;
     NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width,
                                                 (int)[self bounds].size.height);
+    hcv_peinture_touchee();   /* voir hcv_peinture_touchee */
     if (gSelRectActive) {
         dither_region(rep, (int)MIN(gSelStart.x,gSelEnd.x), (int)MIN(gSelStart.y,gSelEnd.y),
                            (int)MAX(gSelStart.x,gSelEnd.x), (int)MAX(gSelStart.y,gSelEnd.y),
@@ -9655,6 +9700,7 @@ static BOOL      gSansMessageChamp = NO;
     Object *card = hc_current_card();
     if (!card) return;
     NSBitmapImageRep *rep = paint_bitmap(card, 500, 400);
+    hcv_peinture_touchee();   /* voir hcv_peinture_touchee */
 
     NSGraphicsContext *ctx = [NSGraphicsContext graphicsContextWithBitmapImageRep:rep];
     [NSGraphicsContext saveGraphicsState];
@@ -9688,6 +9734,7 @@ static BOOL      gSansMessageChamp = NO;
     if (!rep) return;
     gPaintUndo      = paint_copy(rep);
     gPaintUndoLayer = layer;
+    hcv_peinture_touchee();
 
     /* Et, du même coup, le point de repère de Revert s'il n'en existe pas
      * encore pour ce calque.
@@ -9733,6 +9780,7 @@ static BOOL      gSansMessageChamp = NO;
     gPaintUndo      = paint_copy(rep);
     gPaintUndoLayer = layer;
     paint_restore(rep, gKeepSnap);
+    hcv_peinture_touchee();
     [self setNeedsDisplay:YES];
 }
 
@@ -9752,6 +9800,7 @@ static BOOL      gSansMessageChamp = NO;
                                          (int)[self bounds].size.height);
     if (!rep) return;
     paint_swap(rep, gPaintUndo);
+    hcv_peinture_touchee();
     [self setNeedsDisplay:YES];
 }
 
@@ -10198,6 +10247,7 @@ static BOOL      gSansMessageChamp = NO;
         if (layer) {
             NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width,
                                                         (int)[self bounds].size.height);
+            hcv_peinture_touchee();   /* voir hcv_peinture_touchee */
             gPenLast = p;
             gPenDrawing = YES;
             gLockedAxis = AXIS_NONE;
@@ -10255,6 +10305,7 @@ static BOOL      gSansMessageChamp = NO;
         if (!layer) layer = card;
         NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width,
                                                     (int)[self bounds].size.height);
+        hcv_peinture_touchee();   /* voir hcv_peinture_touchee */
         flood_fill(rep, (int)p.x, (int)p.y);
         [self setNeedsDisplay:YES];
         return;
@@ -10559,6 +10610,7 @@ static BOOL      gSansMessageChamp = NO;
         Object *layer = gEditBackground ? card->bg : card;
         if (!layer) layer = card;
         NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width, (int)[self bounds].size.height);
+        hcv_peinture_touchee();   /* voir hcv_peinture_touchee */
 
         if (gTool == TOOL_PENCIL) {
             /* Le sens vient du mouseDown : voir gPenEfface. */
@@ -10607,6 +10659,7 @@ static BOOL      gSansMessageChamp = NO;
             if (layer) {
                 NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width,
                                                      (int)[self bounds].size.height);
+                hcv_peinture_touchee();   /* voir hcv_peinture_touchee */
                 hcv_grave_forme(rep, gShapeStart, gShapeEnd,
                                 hcv_centre_actif([event modifierFlags]));
                 gMultiDernier = gShapeEnd;
@@ -10746,6 +10799,7 @@ static BOOL      gSansMessageChamp = NO;
         Object *layer = gEditBackground ? card->bg : card;
         if (!layer) layer = card;
         NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width, (int)[self bounds].size.height);
+        hcv_peinture_touchee();   /* voir hcv_peinture_touchee */
 
         /* Avec Draw Multiple, la dernière copie de la traînée est peut-être
          * déjà celle-ci : la regraver par-dessus ne change aucun pixel. */
@@ -10762,6 +10816,7 @@ static BOOL      gSansMessageChamp = NO;
             Object *layer = gEditBackground ? card->bg : card;
             if (!layer) layer = card;
             NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width, (int)[self bounds].size.height);
+            hcv_peinture_touchee();   /* voir hcv_peinture_touchee */
             if (gShapeFilled && gFreeCount >= 3)
                 fill_freeform(rep, gFreePts, gFreeCount);
             paint_freeform(rep, gFreePts, gFreeCount, gLineWidth, 1);
@@ -10863,6 +10918,7 @@ static BOOL      gSansMessageChamp = NO;
     if (!layer) layer = card;
     NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width,
                                                 (int)[self bounds].size.height);
+    hcv_peinture_touchee();   /* voir hcv_peinture_touchee */
     stamp_clipboard(rep, gFloatPos);
 
     /* La sélection suit la zone déposée.
@@ -11263,6 +11319,7 @@ static NSTextField  *gSprayDensityLabel = nil;
     if (!layer) layer = card;
     NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width,
                                                 (int)[self bounds].size.height);
+    hcv_peinture_touchee();   /* voir hcv_peinture_touchee */
     spray_stamp(rep, (int)lround(gPenLast.x), (int)lround(gPenLast.y),
                 gSprayRadius, gSprayDensity);
     [self setNeedsDisplay:YES];

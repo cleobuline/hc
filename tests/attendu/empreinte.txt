@@ -1,0 +1,10 @@
+1. deux fois de suite : la même
+   non nulle : oui
+2. champ modifié : une autre
+3. champ remis : la même
+2. bouton ajouté : une autre
+2. script changé : une autre
+4. dessin posé : la même
+5. après l'enregistrement : la même
+5. la pile relue : la même
+6. pas de pile : 0

@@ -113,6 +113,11 @@ Object *hcv_selection(void);
  * valide, et -setStringValue: lève alors une assertion qui ARRÊTE
  * l'application. Voir HCview.m pour la mesure qui a fait percer ce trou. */
 NSString *hcv_texte(const char *s);
+/* La marque « on a peint sur cette pile », pour « Save changes? » à la
+ * fermeture : voir HCview.m. */
+void hcv_peinture_touchee(void);
+BOOL hcv_pile_peinte(Object *pile);
+void hcv_pile_peinte_oublie(Object *pile);
 
 /* Les bulles d'aide (HMShowBalloon d'un module) : « Show Balloons », au menu
  * Help. L'état se garde dans les réglages de HC. */
