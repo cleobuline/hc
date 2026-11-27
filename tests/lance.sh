@@ -109,6 +109,35 @@ UNITES="hc_core hc_notes hc_script hc_presse_papiers hc_file hc_icons hc_origine
 
 mkdir -p "$TRAVAIL/obj" "$TRAVAIL/bin" "$TRAVAIL/sortie" "$ICI/attendu"
 
+# LEAKSANITIZER TOURNE-T-IL ICI ? Sondé une fois, et seulement sous --asan.
+#
+# ASAN_OPTIONS, plus haut, demande detect_leaks=1. Là où LSan n'est pas pris
+# en charge — la chaîne d'Apple sur macOS arm64 —, ASan n'ignore pas la
+# demande : il écrit « detect_leaks is not supported on this platform » et
+# sort avec 1 avant main. Chaque harnais rendait alors « CODE 1 », et la suite
+# annonçait « 332 en échec » sur un arbre où la version ASan de chaque harnais
+# rend exactement son témoin.
+#
+# Là où LSan ne peut pas tourner, il est donc coupé, et le passage le DIT, en
+# grand : un passage aux sanitizers sans détection de fuites est une porte
+# plus faible, et ne doit pas passer pour la porte complète. Là où LSan tourne
+# (Linux, la CI), rien ne change.
+case "$CFLAGS" in
+  *-fsanitize=address*)
+    sonde="$TRAVAIL/.sonde_lsan"
+    if printf 'int main(void){return 0;}\n' |
+       cc -fsanitize=address -x c - -o "$sonde" 2>/dev/null &&
+       ! ASAN_OPTIONS=detect_leaks=1 "$sonde" 2>&1 | grep -q 'detect_leaks is not supported'; then
+      :
+    else
+      export ASAN_OPTIONS=detect_leaks=0:abort_on_error=0
+      echo "ATTENTION : LeakSanitizer n'est pas pris en charge ici — les fuites NE SONT PAS vérifiées"
+      echo "            (ASan et UBSan le sont ; les fuites, seulement sous Linux et en CI)"
+    fi
+    rm -f "$sonde"
+    ;;
+esac
+
 printf 'compilation du noyau'
 for u in $UNITES; do
   cc $CFLAGS -c "$HC/$u.c" -o "$TRAVAIL/obj/$u.o" || { echo " — ÉCHEC sur $u"; exit 1; }
