@@ -4870,6 +4870,8 @@ static BOOL hcv_est_cmd_point(NSEvent *e)
            [[e characters] isEqualToString:@"."];
 }
 
+static BOOL hcv_trace_clic(NSEvent *e);
+
 static void hcv_guette_cmd_point(void)
 {
     NSMutableArray<NSEvent *> *gardees = nil;
@@ -4888,6 +4890,9 @@ static void hcv_guette_cmd_point(void)
          * nulle part ailleurs. Elle reste dans la file, comme le clic. */
         hcv_touche_suit(e);
         if ([e type] == NSEventTypeKeyDown && hcv_est_cmd_point(e)) { vu = YES; continue; }
+        /* Pause et Abort du débogueur pendant une trace : pris ici, comme
+         * Cmd-., puisque le bouton ne verrait son clic qu'après le script. */
+        if (hcv_trace_clic(e)) continue;
         /* UN SCRIPT QUI LIT keysDown GARDE SES FRAPPES — toutes, et non plus
          * les seules répétitions. Chaque coup de batteur laissait son appui et
          * son relâché en file, que ce guetteur sortait puis remettait À CHAQUE
@@ -5518,10 +5523,11 @@ static char kHcvMenuGestionnaires;
  *   Trace      avancer SEUL, ligne à ligne, dans le même gestionnaire
  *   Trace Into avancer seul, même dans un gestionnaire appelé      (Cmd-T)
  *   Abort      arrêter le script                               (Cmd-A)
+ *   Pause      pendant une trace : s'arrêter sur la ligne qui vient
  *
  * Trace attend traceDelay ticks entre deux lignes ; la flèche avance et le
- * panneau suit (cocoa_debug_trace), boutons grisés ; un point rouge
- * l'arrête, Cmd-. l'interrompt.
+ * panneau suit (cocoa_debug_trace) ; seuls Pause et Abort y répondent ; un
+ * point rouge l'arrête, Cmd-. l'interrompt.
  *
  * et, dessous, les variables : les locales du gestionnaire, puis les
  * globales (hc_debug_variables) — le Variable Watcher d'HyperCard, qu'on
@@ -5573,6 +5579,9 @@ static char kHcvMenuGestionnaires;
 @property (nonatomic, strong) NSArray<NSButton *> *avancer;   /* Step … Go */
 @property (nonatomic, strong) NSButton *abandon;
 @property (nonatomic, strong) NSTextField *delai;              /* Trace Delay */
+@property (nonatomic, strong) NSButton *pause;                 /* pendant une trace */
+@property (nonatomic) BOOL enTrace;
+@property (nonatomic) int demande;                             /* HC_TRACE_… */
 @end
 
 static HCDebogueur *gDebogueur;
@@ -5606,7 +5615,7 @@ static void hcv_debug_une_var(void *u, const char *nom, const char *val, int glo
     if (self.panneau) return;
     self.lignes = [NSMutableArray array];
     self.panneau = [[NSPanel alloc]
-        initWithContentRect:NSMakeRect(320, 120, 520, 360)
+        initWithContentRect:NSMakeRect(320, 120, 604, 360)
                   styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskResizable)
                     backing:NSBackingStoreBuffered
                       defer:NO];
@@ -5615,7 +5624,7 @@ static void hcv_debug_une_var(void *u, const char *nom, const char *val, int glo
     NSView *v = [self.panneau contentView];
 
     self.ou = [NSTextField labelWithString:@""];
-    [self.ou setFrame:NSMakeRect(10, 330, 330, 20)];
+    [self.ou setFrame:NSMakeRect(10, 330, 414, 20)];
     [self.ou setAutoresizingMask:NSViewWidthSizable | NSViewMinYMargin];
     [v addSubview:self.ou];
 
@@ -5623,18 +5632,18 @@ static void hcv_debug_une_var(void *u, const char *nom, const char *val, int glo
      * d'HyperCard, ici une case du panneau — l'utilisatrice préfère les
      * boutons au menu. Le texte exact du dialogue d'HyperCard : non mesuré. */
     NSTextField *td = [NSTextField labelWithString:@"Trace Delay:"];
-    [td setFrame:NSMakeRect(346, 330, 90, 20)];
+    [td setFrame:NSMakeRect(430, 330, 90, 20)];
     [td setAlignment:NSTextAlignmentRight];
     [td setAutoresizingMask:NSViewMinXMargin | NSViewMinYMargin];
     [v addSubview:td];
-    self.delai = [[NSTextField alloc] initWithFrame:NSMakeRect(440, 328, 70, 22)];
+    self.delai = [[NSTextField alloc] initWithFrame:NSMakeRect(524, 328, 70, 22)];
     [self.delai setTarget:self];
     [self.delai setAction:@selector(delaiChange:)];
     [self.delai setAutoresizingMask:NSViewMinXMargin | NSViewMinYMargin];
     [v addSubview:self.delai];
 
     /* La liste : Name, Value. */
-    NSScrollView *sl = [[NSScrollView alloc] initWithFrame:NSMakeRect(10, 140, 500, 184)];
+    NSScrollView *sl = [[NSScrollView alloc] initWithFrame:NSMakeRect(10, 140, 584, 184)];
     [sl setHasVerticalScroller:YES];
     [sl setBorderType:NSBezelBorder];
     [sl setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
@@ -5645,7 +5654,7 @@ static void hcv_debug_une_var(void *u, const char *nom, const char *val, int glo
     [cn setEditable:NO];
     NSTableColumn *cv = [[NSTableColumn alloc] initWithIdentifier:@"val"];
     [[cv headerCell] setStringValue:@"Value"];
-    [cv setWidth:350];
+    [cv setWidth:434];
     [cv setEditable:NO];
     [cv setResizingMask:NSTableColumnAutoresizingMask];
     [self.table addTableColumn:cn];
@@ -5658,7 +5667,7 @@ static void hcv_debug_une_var(void *u, const char *nom, const char *val, int glo
     [v addSubview:sl];
 
     /* Dessous, la valeur entière de la variable choisie. */
-    NSScrollView *se = [[NSScrollView alloc] initWithFrame:NSMakeRect(10, 50, 500, 84)];
+    NSScrollView *se = [[NSScrollView alloc] initWithFrame:NSMakeRect(10, 50, 584, 84)];
     [se setHasVerticalScroller:YES];
     [se setBorderType:NSBezelBorder];
     [se setAutoresizingMask:NSViewWidthSizable | NSViewMaxYMargin];
@@ -5683,6 +5692,19 @@ static void hcv_debug_une_var(void *u, const char *nom, const char *val, int glo
         [self bouton:@"Go"         touche:@"g" geste:HC_DEBUG_CONTINUE     x:346] ];
     self.abandon =
         [self bouton:@"Abort"      touche:@"a" geste:HC_DEBUG_ABANDON      x:430];
+    /* PAUSE : actif pendant une trace seulement. Demandé par l'utilisatrice
+     * le 27 novembre, « il manque un bouton pause pour trace » ; non mesuré
+     * dans HyperCard. La trace s'arrête sur la ligne qui vient, comme à un
+     * point rouge. */
+    self.pause =
+        [self bouton:@"Pause"      touche:@""  geste:-1                    x:514];
+    [self.pause setAction:@selector(pauseTrace:)];
+    [self.pause setEnabled:NO];
+}
+
+- (void)pauseTrace:(id)sender {
+    (void)sender;
+    if (self.enTrace) self.demande = HC_TRACE_PAUSE;
 }
 
 - (NSInteger)numberOfRowsInTableView:(NSTableView *)tv {
@@ -5744,6 +5766,12 @@ static void hcv_debug_une_var(void *u, const char *nom, const char *val, int glo
 }
 
 - (void)geste:(id)sender {
+    /* Pendant une trace, il n'y a pas de boucle modale à arrêter : Abort
+     * se dit au noyau par la réponse de la ligne suivante. */
+    if (self.enTrace) {
+        if ([sender tag] == HC_DEBUG_ABANDON) self.demande = HC_TRACE_ABANDON;
+        return;
+    }
     /* La case lue avant de repartir : une valeur tapée sans Retour compte. */
     [self delaiChange:nil];
     [NSApp stopModalWithCode:[sender tag]];
@@ -5755,19 +5783,34 @@ static void hcv_debug_une_var(void *u, const char *nom, const char *val, int glo
 
 /* Pendant une TRACE : le panneau suit, sans attendre de geste. Les
  * boutons sont grisés — le script tourne ; Cmd-. l'interrompt. */
-- (void)suisLaTrace:(Object *)o message:(const char *)message ligne:(int)ligne {
+- (int)suisLaTrace:(Object *)o message:(const char *)message ligne:(int)ligne {
     [self construis];
+    /* Le geste fait pendant l'attente de la ligne précédente. */
+    int r = self.demande;
+    self.demande = HC_TRACE_SUIT;
+    if (r != HC_TRACE_SUIT) {
+        self.enTrace = NO;
+        [self.pause setEnabled:NO];
+        return r;
+    }
+    self.enTrace = YES;
     for (NSButton *b in self.avancer) [b setEnabled:NO];
-    [self.abandon setEnabled:NO];
+    [self.abandon setEnabled:YES];
+    [self.pause setEnabled:YES];
     [self.delai setEnabled:NO];
     self.fige = YES;
     [self remplisPour:o message:message ligne:ligne erreur:NO];
-    if (![self.panneau isVisible]) [self.panneau orderFront:nil];
+    /* Clé, pour que Pause et Abort répondent au premier clic. */
+    if (![self.panneau isVisible]) [self.panneau makeKeyAndOrderFront:nil];
     [self.panneau display];
+    return HC_TRACE_SUIT;
 }
 
 - (void)finDeTrace {
+    self.enTrace = NO;
+    self.demande = HC_TRACE_SUIT;
     if (!self.panneau) return;
+    [self.pause setEnabled:NO];
     [self.panneau orderOut:nil];
     [self.abandon setEnabled:YES];
 }
@@ -5813,6 +5856,9 @@ static void hcv_debug_une_var(void *u, const char *nom, const char *val, int glo
 - (int)attendSur:(Object *)o message:(const char *)message ligne:(int)ligne
           erreur:(BOOL)erreur {
     [self construis];
+    self.enTrace = NO;
+    self.demande = HC_TRACE_SUIT;
+    [self.pause setEnabled:NO];
     for (NSButton *b in self.avancer) [b setEnabled:!erreur];
     [self.abandon setEnabled:YES];
     [self.delai setIntValue:hc_trace_delai()];
@@ -5903,19 +5949,49 @@ static int cocoa_debug_pause(Object *o, const char *message, int ligne)
 /* Une ligne de TRACE : la flèche avance, le panneau suit, sans attendre.
  * Objet nul : la trace est finie, la flèche s'efface et le panneau se
  * retire. */
-static void cocoa_debug_trace(Object *o, const char *message, int ligne)
+/* UN CLIC DANS LE PANNEAU PENDANT UNE TRACE.
+ *
+ * Les clics ne sont pas distribués pendant qu'un script tourne (voir
+ * cocoa_idle_corps et docs/mesures/reentrance.txt) : le bouton Pause ne
+ * recevrait le sien qu'une fois la trace finie. hcv_guette_cmd_point le
+ * sort donc de la file et le confie ici ; on regarde sous quel bouton il
+ * est tombé. Tout clic dans le panneau est pris — le remettre en file le
+ * livrerait après la trace, à contretemps. */
+static BOOL hcv_trace_clic(NSEvent *e)
 {
-    if (!gView) return;
-    if (!o) {
-        for (HCEditionScript *x in gEditions)
-            if ([x.vue isKindOfClass:[HCScriptView class]])
-                ((HCScriptView *)x.vue).ligneCourante = 0;
-        [gDebogueur finDeTrace];
-        return;
+    if (!gDebogueur || !gDebogueur.enTrace || [e window] != gDebogueur.panneau)
+        return NO;
+    if ([e type] == NSEventTypeLeftMouseDown) {
+        NSView *v = [gDebogueur.panneau contentView];
+        NSPoint p = [v convertPoint:[e locationInWindow] fromView:nil];
+        if (NSPointInRect(p, [gDebogueur.pause frame]))
+            gDebogueur.demande = HC_TRACE_PAUSE;
+        else if (NSPointInRect(p, [gDebogueur.abandon frame]))
+            gDebogueur.demande = HC_TRACE_ABANDON;
     }
-    hcv_debug_montre_ligne(o, ligne, NO);
+    return YES;
+}
+
+static void hcv_trace_efface(void)
+{
+    for (HCEditionScript *x in gEditions)
+        if ([x.vue isKindOfClass:[HCScriptView class]])
+            ((HCScriptView *)x.vue).ligneCourante = 0;
+    [gDebogueur finDeTrace];
+}
+
+static int cocoa_debug_trace(Object *o, const char *message, int ligne)
+{
+    if (!gView) return HC_TRACE_SUIT;
+    if (!o) { hcv_trace_efface(); return HC_TRACE_SUIT; }
     if (!gDebogueur) gDebogueur = [[HCDebogueur alloc] init];
-    [gDebogueur suisLaTrace:o message:message ligne:ligne];
+    /* Abort : le script s'arrête, la flèche et le panneau s'en vont. Pause :
+     * la pause qui suit montre elle-même la ligne. */
+    int r = [gDebogueur suisLaTrace:o message:message ligne:ligne];
+    if (r == HC_TRACE_ABANDON) { hcv_trace_efface(); return r; }
+    if (r == HC_TRACE_PAUSE) return r;
+    hcv_debug_montre_ligne(o, ligne, NO);
+    return HC_TRACE_SUIT;
 }
 
 /* ═══ LE MESSAGE WATCHER (la 1.1) ════════════════════════════════════════

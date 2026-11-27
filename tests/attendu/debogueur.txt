@@ -105,3 +105,15 @@
       [TRACE] button "B".mouseUp ligne 5
       fini, x=3
       [TRACE] fin
+   -- Pause en ligne 4 : arrêt sur la 4, puis Step, puis Trace jusqu'au bout
+      [ARRÊT] button "B".mouseUp ligne 2 -> trace
+      [TRACE] button "B".mouseUp ligne 3
+      [TRACE] button "B".mouseUp ligne 4 -> pause
+      [ARRÊT] button "B".mouseUp ligne 4 -> pas
+      [ARRÊT] button "B".mouseUp ligne 5 -> trace
+      fini, x=3
+      [TRACE] fin
+   -- Abort en ligne 4 : le script s'arrête, rien n'est affiché
+      [ARRÊT] button "B".mouseUp ligne 2 -> trace
+      [TRACE] button "B".mouseUp ligne 3
+      [TRACE] button "B".mouseUp ligne 4 -> abandon

@@ -59,12 +59,17 @@ static int g_montre_vars = 0;
 
 static int g_ecrit = 0;
 
-static void trace(Object *o, const char *message, int l)
+static int g_trace_repond_ligne = 0, g_trace_reponse = HC_TRACE_SUIT;
+
+static int trace(Object *o, const char *message, int l)
 {
-    if (!o) { printf("      [TRACE] fin\n"); return; }
+    if (!o) { printf("      [TRACE] fin\n"); return HC_TRACE_SUIT; }
     char qui[64];
     hc_describe(o, qui, sizeof qui);
-    printf("      [TRACE] %s.%s ligne %d\n", qui, message, l);
+    int r = l == g_trace_repond_ligne ? g_trace_reponse : HC_TRACE_SUIT;
+    printf("      [TRACE] %s.%s ligne %d%s\n", qui, message, l,
+           r == HC_TRACE_PAUSE ? " -> pause" : r == HC_TRACE_ABANDON ? " -> abandon" : "");
+    return r;
 }
 
 static int pause(Object *o, const char *message, int l)
@@ -265,6 +270,14 @@ int main(void)
     hc_set_script(T, "on t\nset the traceDelay to 2\nput the traceDelay\nend t\n");
     hc_send(T, "t");
     { int g[] = { HC_DEBUG_TRACE }; clic(g, 1); }
+    hc_trace_delai_pose(0);
+    puts("   -- Pause en ligne 4 : arrêt sur la 4, puis Step, puis Trace jusqu'au bout");
+    g_trace_repond_ligne = 4; g_trace_reponse = HC_TRACE_PAUSE;
+    { int g[] = { HC_DEBUG_TRACE, HC_DEBUG_PAS, HC_DEBUG_TRACE }; clic(g, 3); }
+    puts("   -- Abort en ligne 4 : le script s'arrête, rien n'est affiché");
+    g_trace_reponse = HC_TRACE_ABANDON;
+    { int g[] = { HC_DEBUG_TRACE }; clic(g, 1); }
+    g_trace_repond_ligne = 0; g_trace_reponse = HC_TRACE_SUIT;
     h.debug_trace = NULL;
     hc_free(st);
     return 0;
