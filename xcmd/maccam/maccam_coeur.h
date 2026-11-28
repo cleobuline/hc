@@ -123,6 +123,8 @@ void cam_pas(Cam *c, int voisinage);
 void cam_remplit(Cam *c, int bit);
 void cam_efface(Cam *c);
 void cam_efface_bit(Cam *c, int bit);
+/* erase3 à erase8, de HC : un bit éteint sur toute la grille, bords compris. */
+void cam_efface_plan(Cam *c, int bit);
 
 /* « set the image7 of window "CAM" to <rect> » : un dessin de rw × rh
  * points, 1 pour noir, dont chaque point noir ALLUME le bit du plan. */
