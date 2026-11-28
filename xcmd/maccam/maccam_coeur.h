@@ -119,11 +119,10 @@ void cam_voisins(Cam *c, int n, const signed char *dx, const signed char *dy,
 /* Un pas : le balayage, puis les deux phases basculent. */
 void cam_pas(Cam *c, int voisinage);
 
-/* fill1 à fill8 (bit 0 à 7), erasea, erase1 et erase2 (bit 0 et 1). */
+/* fill1 à fill8 (bit 0 à 7), erasea, et erase1 à erase8 (bit 0 à 7) : un
+ * bit éteint sur toute la grille, bords du tore compris. */
 void cam_remplit(Cam *c, int bit);
 void cam_efface(Cam *c);
-void cam_efface_bit(Cam *c, int bit);
-/* erase3 à erase8, de HC : un bit éteint sur toute la grille, bords compris. */
 void cam_efface_plan(Cam *c, int bit);
 
 /* « set the image7 of window "CAM" to <rect> » : un dessin de rw × rh

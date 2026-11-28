@@ -133,8 +133,8 @@ messages.
 | --- | --- |
 | `step` | un pas, selon `major` |
 | `stepfast`, `stepmfast`, `stepvfast` | des pas jusqu'au clic — ou Cmd-. — : selon `major`, en Margolus, en von Neumann |
-| `fill1` à `fill8`, `erasea`, `erase1`, `erase2` | allumer un bit partout, tout éteindre, éteindre les bits 0 ou 1 |
-| `erase3` à `erase8` | **de HC** : éteindre un bit, comme `fill3` à `fill8` l'allument — `erase8` le plan 0, `erase7` le plan 1, `erase6` le plan 2, `erase5` le plan 3. Ajouté le 27 novembre, décidé par l'utilisatrice |
+| `fill1` à `fill8`, `erasea` | allumer un bit partout, tout éteindre |
+| `erase1` à `erase8` | éteindre un bit partout, bords du tore compris — `erase8` le plan 0, `erase7` le plan 1, `erase6` le plan 2, `erase5` le plan 3. L'original n'avait qu'`erase1` et `erase2`, décalés d'un cran (ni la dernière ligne ni la première colonne) : corrigés, et `erase3` à `erase8` ajoutés, décidé par l'utilisatrice les 27 et 28 novembre |
 | `blacka` | rien, comme l'original |
 | `toscrap` | la fenêtre au presse-papiers |
 

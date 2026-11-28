@@ -196,8 +196,9 @@ static int message(Fenetre *f, const char *m)
     else if (pareil(m, "stepmfast")) pas(f, CAM_MARGOLUS, 1);
     else if (pareil(m, "stepvfast")) pas(f, CAM_VONN, 1);
     else if (pareil(m, "erasea"))    { cam_efface(c); dessine(f); }
-    else if (pareil(m, "erase1"))    { cam_efface_bit(c, 0); dessine(f); }
-    else if (pareil(m, "erase2"))    { cam_efface_bit(c, 1); dessine(f); }
+    /* erase1 et erase2 aussi sur toute la grille : voir cam_efface_plan. */
+    else if (pareil(m, "erase1"))    { cam_efface_plan(c, 0); dessine(f); }
+    else if (pareil(m, "erase2"))    { cam_efface_plan(c, 1); dessine(f); }
     else if (pareil(m, "blacka"))    {}                     /* rien, comme l'original */
     else if (pareil(m, "toscrap"))   CopyXWindow(f->w);
     else {
