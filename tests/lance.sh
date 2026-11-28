@@ -109,6 +109,35 @@ UNITES="hc_core hc_notes hc_script hc_presse_papiers hc_file hc_icons hc_origine
 
 mkdir -p "$TRAVAIL/obj" "$TRAVAIL/bin" "$TRAVAIL/sortie" "$ICI/attendu"
 
+# LEAKSANITIZER TOURNE-T-IL ICI ? Sondé une fois, et seulement sous --asan.
+#
+# ASAN_OPTIONS, plus haut, demande detect_leaks=1. Là où LSan n'est pas pris
+# en charge — la chaîne d'Apple sur macOS arm64 —, ASan n'ignore pas la
+# demande : il écrit « detect_leaks is not supported on this platform » et
+# sort avec 1 avant main. Chaque harnais rendait alors « CODE 1 », et la suite
+# annonçait « 332 en échec » sur un arbre où la version ASan de chaque harnais
+# rend exactement son témoin.
+#
+# Là où LSan ne peut pas tourner, il est donc coupé, et le passage le DIT, en
+# grand : un passage aux sanitizers sans détection de fuites est une porte
+# plus faible, et ne doit pas passer pour la porte complète. Là où LSan tourne
+# (Linux, la CI), rien ne change.
+case "$CFLAGS" in
+  *-fsanitize=address*)
+    sonde="$TRAVAIL/.sonde_lsan"
+    if printf 'int main(void){return 0;}\n' |
+       cc -fsanitize=address -x c - -o "$sonde" 2>/dev/null &&
+       ! ASAN_OPTIONS=detect_leaks=1 "$sonde" 2>&1 | grep -q 'detect_leaks is not supported'; then
+      :
+    else
+      export ASAN_OPTIONS=detect_leaks=0:abort_on_error=0
+      echo "ATTENTION : LeakSanitizer n'est pas pris en charge ici — les fuites NE SONT PAS vérifiées"
+      echo "            (ASan et UBSan le sont ; les fuites, seulement sous Linux et en CI)"
+    fi
+    rm -f "$sonde"
+    ;;
+esac
+
 printf 'compilation du noyau'
 for u in $UNITES; do
   cc $CFLAGS -c "$HC/$u.c" -o "$TRAVAIL/obj/$u.o" || { echo " — ÉCHEC sur $u"; exit 1; }
@@ -125,6 +154,25 @@ sh "$HC/tiers/wamr_compile.sh" "$TRAVAIL/obj_wamr" || { echo " — ÉCHEC"; exit
 echo ' fait'
 
 . "$ICI/arguments.sh"   # la table des arguments, partagée avec releve.sh
+. "$ICI/delai.sh"       # $DELAI, le délai portable, partagé avec releve.sh
+
+# L'ÉDITEUR DE LIENS CONNAÎT-IL --wrap ? Sondé une fois, parce que la réponse
+# décide si un harnais qui en a besoin est un ÉCHEC ou un ÉCART.
+#
+# `--wrap` est du ld de GNU ; celui d'Apple le refuse net (« unknown options:
+# --wrap=malloc »). oomcopie intercepte ainsi malloc, calloc et realloc pour
+# refuser une allocation choisie : sur macOS, il ne peut donc pas se lier du
+# tout. Laissé tel quel, il rendait « NE COMPILE PAS » et rougissait toute la
+# suite, ce qui dit « quelque chose est cassé ici » d'une limite de la
+# plateforme — le même mensonge que le `timeout` absent. Là où --wrap MARCHE,
+# l'échec reste un échec : un harnais qui cesse sans bruit de se construire
+# sous Linux doit encore se faire entendre.
+WRAP=non
+if printf 'int main(void){return 0;}\n' |
+   cc -Wl,--wrap=malloc -x c - -o "$TRAVAIL/.sonde_wrap" 2>/dev/null; then
+  WRAP=oui
+fi
+rm -f "$TRAVAIL/.sonde_wrap"
 
 ok=0; rate=0; neuf=0; saute=0; chrono=0
 cd "$ICI"
@@ -137,6 +185,11 @@ for src in harnais/*.c; do
   # et realloc par --wrap afin de refuser une allocation choisie : le noyau
   # n'en sait rien, aucune ligne de production ne porte la sonde.
   LIEN=$(sed -n 's|^/\* lance-lien : \(.*\) \*/$|\1|p' "$src" | head -n 1)
+  if [ "$WRAP" = non ]; then
+    case "$LIEN" in
+      *--wrap*) echo "  ÉCARTÉ (pas de --wrap)  $n"; saute=$((saute+1)); continue ;;
+    esac
+  fi
   if ! cc $CFLAGS -o "$TRAVAIL/bin/$n" "$src" "$TRAVAIL"/obj/*.o "$TRAVAIL"/obj_wamr/*.o -lm -lz -lpthread $LIEN 2>/dev/null; then
     echo "  NE COMPILE PAS  $n"; rate=$((rate+1)); continue
   fi
@@ -177,7 +230,7 @@ for src in harnais/*.c; do
   # 300 laisse de la marge sans rien cacher : une vraie boucle infinie se fait
   # toujours prendre, et les 248 autres harnais tournent en moins d'une
   # seconde chacun — le délai ne coûte donc rien tant que rien ne se bloque.
-  timeout 300 "$TRAVAIL/bin/$n" $ARGS > "$TRAVAIL/sortie/$n" 2>&1 < /dev/null
+  $DELAI 300 "$TRAVAIL/bin/$n" $ARGS > "$TRAVAIL/sortie/$n" 2>&1 < /dev/null
   code=$?
   # UN PLANTAGE N'EST PAS UN DÉPASSEMENT DE DÉLAI.
   #

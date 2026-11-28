@@ -33,6 +33,7 @@ R="${HC_RELEVE_FICHIER:-$TRAVAIL/releve.tsv}"
 [ -d "$TRAVAIL/bin" ] || { echo "rien à mesurer : lancez ./lance.sh d'abord" >&2; exit 1; }
 
 . "$ICI/arguments.sh"
+. "$ICI/delai.sh"
 rm -f "$R"
 n=0
 # N'EXÉCUTER QUE DES HARNAIS QUI EXISTENT ENCORE.
@@ -52,7 +53,7 @@ for b in "$TRAVAIL"/bin/*; do
     ARGS=$(arguments "$(basename "$b")")
     HC_V3_RELEVE="$R" HC_V3_RELEVE_QUI="$(basename "$b")" \
     HC_HORLOGE=1757606400 TZ=UTC LC_ALL=C \
-        timeout 30 "$b" $ARGS >/dev/null 2>&1 </dev/null
+        $DELAI 30 "$b" $ARGS >/dev/null 2>&1 </dev/null
     n=$((n + 1))
 done
 touch "$R"
