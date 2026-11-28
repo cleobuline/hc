@@ -753,6 +753,17 @@ int main(int argc, char **argv)
     fais("send erasea to window \"CAM\"");
     fais("put the count of window \"CAM\"");
     fais("put the cells of window \"CAM\"");             /* tout éteint */
+    /* erase3 à erase8, l'ajout de HC décidé par l'utilisatrice le 27
+     * novembre : éteindre UN plan, les pendants de fill3 à fill8. Les plans
+     * 0 et 1 remplis, erase8 éteint le plan 0 seul, puis erase7 le plan 1. */
+    puts("   -- erase8 et erase7 : éteindre un seul plan, l'ajout de HC");
+    fais("send fill8 to window \"CAM\"");
+    fais("send fill7 to window \"CAM\"");
+    fais("put the count of window \"CAM\"");           /* plans 0 et 1 pleins */
+    fais("send erase8 to window \"CAM\"");
+    fais("put the count of window \"CAM\"");           /* plan 0 éteint, 1 plein */
+    fais("send erase7 to window \"CAM\"");
+    fais("put the count of window \"CAM\"");           /* tout éteint */
     /* « custom », l'ajout de HC décidé par l'utilisatrice le 9 novembre :
      * le texte FORTH de la carte, dont la fenêtre lit la dernière
      * déclaration N/CUSTOM pour son voisinage 11. La machine est éprouvée

@@ -210,6 +210,21 @@ static int message(Fenetre *f, const char *m)
                 return 1;
             }
         }
+        /* erase3 à erase8 : les pendants de fill3 à fill8, bit 2 à 7 — donc
+         * erase8 éteint le PLAN 0, erase5 le plan 3. L'original n'avait que
+         * erase1 et erase2 (bits 0 et 1, hors des quatre plans). Ajouté le 27
+         * novembre, décidé par l'utilisatrice : un script peut ainsi éteindre
+         * un seul plan — les cailloux d'une pluie, tous les N pas. Envoyés de
+         * temps en temps, jamais pendant un pas : la vitesse ne change pas. */
+        for (int k = 3; k <= 8; k++) {
+            char n[8];
+            snprintf(n, sizeof n, "erase%d", k);
+            if (pareil(m, n)) {
+                cam_efface_bit(c, k - 1);
+                dessine(f);
+                return 1;
+            }
+        }
         return 0;
     }
     return 1;
