@@ -220,7 +220,7 @@ static int message(Fenetre *f, const char *m)
             char n[8];
             snprintf(n, sizeof n, "erase%d", k);
             if (pareil(m, n)) {
-                cam_efface_bit(c, k - 1);
+                cam_efface_plan(c, k - 1);   /* bords du tore compris */
                 dessine(f);
                 return 1;
             }

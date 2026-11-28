@@ -429,6 +429,19 @@ void cam_efface(Cam *c)
     memset(c->pix, 0, (size_t)c->w * (size_t)c->h);
 }
 
+/* erase3 à erase8, de HC : TOUTE la grille, bords du tore compris. Ils
+ * passaient d'abord par cam_efface_bit, aux bornes de l'original, qui
+ * laissent la dernière ligne et la première colonne ; or ces bords sont lus
+ * comme voisins au pas suivant, et un caillou resté là relançait une onde
+ * depuis le bord. Vu DANS HC par l'utilisatrice le 28 novembre : « ton erase
+ * efface pas les bords du tore ». */
+void cam_efface_plan(Cam *c, int bit)
+{
+    if (bit < 0 || bit > 7) return;
+    for (size_t i = 0; i < (size_t)c->w * (size_t)c->h; i++)
+        c->pix[i] &= (u8)~(1u << bit);
+}
+
 /* erase1, erase2 : les lignes 0 à h - 2, les colonnes 1 à w - 1. */
 void cam_efface_bit(Cam *c, int bit)
 {
